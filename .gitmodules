@@ -1,0 +1,3 @@
+[submodule "vendor/taocpp-json"]
+	path = vendor/taocpp-json
+	url = https://github.com/taocpp/json.git
