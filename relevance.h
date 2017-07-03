@@ -1,67 +1,71 @@
-#ifndef QSRELEVANCE_H
-#define QSRELEVANCE_H
+#ifndef RELEVANCE_H
+#define RELEVANCE_H
 
 #include <boost/uuid/uuid.hpp>
+#include <boost/uuid/string_generator.hpp>
+using namespace boost;
 #include <iostream>
+using namespace std;
 #include "uri.h"
 #include "event.h"
+using namespace drumlin;
 
 namespace Sources {
-    class QSSource;
+    class Source;
 }
 
+namespace Pleg {
+
 /**
- * @brief The QSRelevance class : for assessing relevance of samples, streams, transforms etc
+ * @brief The Relevance class : for assessing relevance of samples, streams, transforms etc
  */
-class QSRelevance
+class Relevance
 {
-    Sources::QSSource *source = nullptr;
-    std::string source_name = "";
-    QUuid uuid;
+    Sources::Source *source = nullptr;
+    string source_name = "";
+    uuids::uuid uuid;
 public:
     bool argParity;
     bool queryParity;
-    typedef QSUriParseFunc::arguments_type arguments_type;
+    typedef UriParseFunc::arguments_type arguments_type;
     arguments_type arguments;
     arguments_type params;
-    QSRelevance(bool _true = true);
-    QSRelevance(Sources::QSSource *source);
-    QSRelevance(const char* source_name);
-    QSRelevance(const QSRelevance &&rel);
-    QSRelevance(const QSRelevance &rhs);
+    Relevance(bool _true = true);
+    Relevance(Sources::Source *source);
+    Relevance(const char* source_name);
+    Relevance(const Relevance &&rel);
+    Relevance(const Relevance &rhs);
 
-    Sources::QSSource *getSource()const;
-    void setSource(Sources::QSSource *_source);
+    Sources::Source *getSource()const;
+    void setSource(Sources::Source *_source);
     bool hasSource()const{ return nullptr != source; }
-    std::string getSourceName()const{ return source_name; }
-    void setSourceName(std::string name){ source_name = name; }
-    QUuid getUuid()const;
-    void setUuid(QUuid uuid);
+    string getSourceName()const{ return source_name; }
+    void setSourceName(string name){ source_name = name; }
+    uuids::uuid getUuid()const;
+    void setUuid(uuids::uuid uuid);
     void setQueryParams(arguments_type query_params);
-    bool compare(const QSRelevance &rhs)const;
+    bool compare(const Relevance &rhs)const;
 
     void operator=(const char *source_name);
-    void operator=(const QSRelevance &);
+    void operator=(const Relevance &);
 
     bool toBool()const;
     void toJson(json::value *object)const;
     operator const char*()const;
 
-    friend bool operator==(const QSRelevance &,const QSRelevance &);
-    friend std::ostream &operator<<(std::ostream &stream,const QSRelevance &rhs);
-    friend QDebug &operator<<(QDebug &stream,const QSRelevance &rhs);
+    friend bool operator==(const Relevance &,const Relevance &);
+    friend ostream &operator<<(ostream &stream,const Relevance &rhs);
 };
 
 namespace Relevance {
-    QSRelevance fromArguments(const QSUriParseFunc::arguments_type &arguments,bool argParity = false);
-    QSRelevance fromSource(const Sources::QSSource *source);
+    Relevance fromArguments(const UriParseFunc::arguments_type &arguments,bool argParity = false);
+    Relevance fromSource(const Sources::Source *source);
 }
 
-bool operator==(const QSRelevance &,const QSRelevance &);
-std::ostream &operator<<(std::ostream &stream,const QSRelevance &rhs);
-QDebug &operator<<(QDebug &stream,const QSRelevance &rhs);
+bool operator==(const Relevance &,const Relevance &);
+ostream &operator<<(ostream &stream,const Relevance &rhs);
 
 template <>
-QSPodEvent<QSRelevance::arguments_type> *pod_event_cast(const QSEvent *event,QSRelevance::arguments_type *out);
+PodEvent<Relevance::arguments_type> *pod_event_cast(const Event *event,Relevance::arguments_type *out);
 
-#endif // QSRELEVANCE_H
+#endif // RELEVANCE_H

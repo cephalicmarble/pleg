@@ -1,35 +1,38 @@
-#include <qs.h>
-using namespace QS;
-#include <tao/json.hh>
+#include <pleg.h>
+using namespace Pleg;
+#include <tao/json.hpp>
 using namespace tao;
 #include "relevance.h"
-#include <QDebug>
 #include "source.h"
 #include <algorithm>
 #include <string>
 #include <iostream>
 #include <sstream>
 using namespace std;
+#include <boost/lexical_cast.hpp>
+using namespace boost;
+
+namespace Pleg {
 
 /**
- * @brief QSRelevance::QSRelevance : the default QSRelevance is falsy
+ * @brief Relevance::Relevance : the default Relevance is falsy
  * @param untrue
  */
-QSRelevance::QSRelevance(bool _true):argParity(false),queryParity(false)
+Relevance::Relevance(bool _true):argParity(false),queryParity(false)
 {
     if(_true){
-        source = (Sources::QSSource*)1;
-        uuid = QUuid::fromRfc4122("truthy");
+        source = (Sources::Source*)1;
+        uuid = 1;
     }else{
         source = nullptr;
-        uuid = QUuid();
+        uuid = gen("truthy");
     }
 }
 /**
- * @brief QSRelevance::QSRelevance : construct from a given source
- * @param _source Sources::QSSource*
+ * @brief Relevance::Relevance : construct from a given source
+ * @param _source Sources::Source*
  */
-QSRelevance::QSRelevance(Sources::QSSource *_source):argParity(false),queryParity(false)
+Relevance::Relevance(Sources::Source *_source):argParity(false),queryParity(false)
 {
     source = _source;
     if(!!_source){
@@ -37,46 +40,46 @@ QSRelevance::QSRelevance(Sources::QSSource *_source):argParity(false),queryParit
         uuid = _source->getUuid();
     }else{
         source_name = "<empty>";
-        uuid = QUuid();
+        uuid = gen("empty");
     }
 }
 
-QSRelevance::QSRelevance(const char* _source_name):argParity(false),queryParity(false)
+Relevance::Relevance(const char* _source_name):argParity(false),queryParity(false)
 {
     operator=(_source_name);
 }
 
 /**
- * @brief QSRelevance::QSRelevance : move constructor
- * @param rel QSRelevance const&&
+ * @brief Relevance::Relevance : move constructor
+ * @param rel Relevance const&&
  */
-QSRelevance::QSRelevance(const QSRelevance &&rel)
+Relevance::Relevance(const Relevance &&rel)
 {
     operator =(std::move(rel));
 }
 
 /**
- * @brief QSRelevance::QSRelevance : copy constructor
- * @param rhs QSRelevance const&
+ * @brief Relevance::Relevance : copy constructor
+ * @param rhs Relevance const&
  */
-QSRelevance::QSRelevance(const QSRelevance &rhs)
+Relevance::Relevance(const Relevance &rhs)
 {
     operator =(rhs);
 }
 /**
- * @brief QSRelevance::getSource
- * @return Sources::QSSource*
+ * @brief Relevance::getSource
+ * @return Sources::Source*
  */
-Sources::QSSource *QSRelevance::getSource()const
+Sources::Source *Relevance::getSource()const
 {
     return source;
 }
 
 /**
- * @brief QSRelevance::setSource : setSource for the relevance
- * @param _source Sources::QSSource*
+ * @brief Relevance::setSource : setSource for the relevance
+ * @param _source Sources::Source*
  */
-void QSRelevance::setSource(Sources::QSSource *_source)
+void Relevance::setSource(Sources::Source *_source)
 {
     source = _source;
     source_name = (const char*)*_source;
@@ -84,55 +87,55 @@ void QSRelevance::setSource(Sources::QSSource *_source)
 }
 
 /**
- * @brief QSRelevance::getUuid
+ * @brief Relevance::getUuid
  * @return QUuid
  */
-QUuid QSRelevance::getUuid()const
+QUuid Relevance::getUuid()const
 {
     return uuid;
 }
 
 /**
- * @brief QSRelevance::setUuid
- * @param _uuid QSRelevance
+ * @brief Relevance::setUuid
+ * @param _uuid Relevance
  */
-void QSRelevance::setUuid(QUuid _uuid)
+void Relevance::setUuid(QUuid _uuid)
 {
     uuid = _uuid;
 }
 
-void QSRelevance::setQueryParams(arguments_type query_params)
+void Relevance::setQueryParams(arguments_type query_params)
 {
     params.clear();
     std::copy(query_params.begin(),query_params.end(),std::inserter(params,params.begin()));
 }
 
 /**
- * @brief QSRelevance::compare : assess equality to the rhs
- * @param rhs QSRelevance const&
+ * @brief Relevance::compare : assess equality to the rhs
+ * @param rhs Relevance const&
  * @return bool
  */
-bool QSRelevance::compare(const QSRelevance &rhs)const
+bool Relevance::compare(const Relevance &rhs)const
 {
     return source_name == rhs.source_name;
 }
 
-void QSRelevance::operator=(const char *rhs)
+void Relevance::operator=(const char *rhs)
 {
-    source = Sources::sources.fromString<Sources::QSSource>(rhs);
+    source = Sources::sources.fromString<Sources::Source>(rhs);
     if(!!source){
         source_name = rhs;
         uuid = source->getUuid();
     }else{
-        uuid = QUuid::fromRfc4122("any experiment");
+        uuid = gen("assigned empty");
     }
 }
 
 /**
- * @brief QSRelevance::operator = : copy assignment
- * @param rhs QSRelevance const&
+ * @brief Relevance::operator = : copy assignment
+ * @param rhs Relevance const&
  */
-void QSRelevance::operator=(const QSRelevance &rhs)
+void Relevance::operator=(const Relevance &rhs)
 {
     source = rhs.source;
     source_name = rhs.source_name;
@@ -146,24 +149,24 @@ void QSRelevance::operator=(const QSRelevance &rhs)
 }
 
 /**
- * @brief QSRelevance::operator bool : assess constant truthiness
+ * @brief Relevance::operator bool : assess constant truthiness
  */
-bool QSRelevance::toBool()const
+bool Relevance::toBool()const
 {
-    return nullptr != source || !uuid.isNull() || argParity || queryParity;
+    return nullptr != source || !uuid.is_nil() || argParity || queryParity;
 }
 
-void QSRelevance::toJson(json::value *object)const
+void Relevance::toJson(json::value *object)const
 {
     json::object_t &obj(object->get_object());
     obj.insert({"source",source_name});
-    obj.insert({"uuid",uuid.toString().toStdString()});
+    obj.insert({"uuid",lexical_cast<string>(uuid)});
 }
 
 /**
  * @brief operator const char*: for QDebug
  */
-QSRelevance::operator const char*()const
+Relevance::operator const char*()const
 {
     std::stringstream ss;
     ss << *this;
@@ -174,16 +177,16 @@ namespace Relevance {
 
 /**
  * @brief fromArguments : derive Relevance from parsed URI
- * @param c_arguments QSUriParseFunc::arguments_type
- * @return QSRelevance
+ * @param c_arguments UriParseFunc::arguments_type
+ * @return Relevance
  */
-QSRelevance fromArguments(const QSUriParseFunc::arguments_type &c_arguments,bool argParity)
+Relevance fromArguments(const UriParseFunc::arguments_type &c_arguments,bool argParity)
 {
-    typedef QSUriParseFunc::arguments_type arguments_type;
+    typedef UriParseFunc::arguments_type arguments_type;
     arguments_type &arguments = const_cast<arguments_type&>(c_arguments);
-    QSRelevance ret("");
+    Relevance ret("");
     if(arguments.end()!=arguments.find("source")){
-        ret = arguments.at("source").toStdString().c_str();
+        ret = arguments.at("source").c_str();
     }
     if(arguments.end()!=arguments.find("uuid")){
         ret.setUuid(arguments.at("uuid"));
@@ -197,12 +200,12 @@ QSRelevance fromArguments(const QSUriParseFunc::arguments_type &c_arguments,bool
 
 /**
  * @brief fromSource : utility function for assessing source relevance
- * @param source Sources::QSSource*
- * @return QSRelevance
+ * @param source Sources::Source*
+ * @return Relevance
  */
-QSRelevance fromSource(const Sources::QSSource *source)
+Relevance fromSource(const Sources::Source *source)
 {
-    QSRelevance rel(source);
+    Relevance rel(source);
     return rel;
 }
 
@@ -210,11 +213,11 @@ QSRelevance fromSource(const Sources::QSSource *source)
 
 /**
  * @brief operator == : c++ technique
- * @param lhs QSRelevance const&
- * @param rhs QSRelevance const&
+ * @param lhs Relevance const&
+ * @param rhs Relevance const&
  * @return bool
  */
-bool operator==(const QSRelevance &lhs,const QSRelevance &rhs)
+bool operator==(const Relevance &lhs,const Relevance &rhs)
 {
     return lhs.toBool() && rhs.toBool() && lhs.compare(rhs);
 }
@@ -222,10 +225,10 @@ bool operator==(const QSRelevance &lhs,const QSRelevance &rhs)
 /**
  * @brief operator << : stream operator
  * @param stream std::ostream &
- * @param rhs QSRelevance const&
+ * @param rhs Relevance const&
  * @return std::ostream &
  */
-std::ostream &operator<<(std::ostream &stream,const QSRelevance &rel)
+std::ostream &operator<<(std::ostream &stream,const Relevance &rel)
 {
     if(!rel.source){
         stream << " relevance is irrelevant (tm)";
@@ -233,7 +236,7 @@ std::ostream &operator<<(std::ostream &stream,const QSRelevance &rel)
     }
     stream << &rel
            << " - name:" << rel.source_name
-           << " - uuid:" << rel.uuid.toString().toStdString();
+           << " - uuid:" << lexical_cast<string>(rel.uuid);
     return stream;
 }
 
@@ -243,17 +246,17 @@ std::ostream &operator<<(std::ostream &stream,const QSRelevance &rel)
  * @param rhs QRelevance const&
  * @return QDebug&
  */
-QDebug &operator<<(QDebug &stream,const QSRelevance &rhs)
+QDebug &operator<<(QDebug &stream,const Relevance &rhs)
 {
-    stream << QString(rhs);
+    stream << string(rhs);
     return stream;
 }
 
 template <>
-QSPodEvent<QSRelevance::arguments_type> *pod_event_cast(const QSEvent *event,QSRelevance::arguments_type *out)
+PodEvent<Relevance::arguments_type> *pod_event_cast(const Event *event,Relevance::arguments_type *out)
 {
     if(out){
-        QSPodEvent<QSRelevance::arguments_type> *ret = static_cast<QSPodEvent<QSRelevance::arguments_type>*>(const_cast<QSEvent*>(event));
+        PodEvent<Relevance::arguments_type> *ret = static_cast<PodEvent<Relevance::arguments_type>*>(const_cast<Event*>(event));
         if(0==std::distance(out->begin(),out->end())){
             for(auto item : ret->getVal()){
                 out->insert(item);
@@ -261,5 +264,5 @@ QSPodEvent<QSRelevance::arguments_type> *pod_event_cast(const QSEvent *event,QSR
         }
         return ret;
     }
-    return static_cast<QSPodEvent<QSRelevance::arguments_type>*>(const_cast<QSEvent*>(event));
+    return static_cast<PodEvent<Relevance::arguments_type>*>(const_cast<Event*>(event));
 }

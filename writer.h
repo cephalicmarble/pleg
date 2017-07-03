@@ -1,0 +1,139 @@
+#ifndef WRITER_H
+#define WRITER_H
+
+#include "tao_forward.h"
+using namespace tao;
+#include <fstream>
+#include <map>
+#include <fstream>
+using namespace std;
+#include <boost/date_time/posix_time/posix_time.hpp>
+using namespace boost;
+#include "object.h"
+#include "relevance.h"
+#include "buffer.h"
+#include "files.h"
+using namespace drumlin;
+
+//namespace drumlin {
+//    class Socket;
+//}
+
+namespace Pleg {
+
+/*
+ * Forward declarations
+ */
+
+class Response;
+
+/**
+ * @brief The Writer class
+ */
+class Writer :
+    public Object
+{
+public:
+    explicit Writer(Object *parent = 0):Object(parent){}
+    /**
+     * @brief write : pure virtual function to write a buffer.
+     * @param buffer Buffers::Buffer*
+     */
+    virtual void write(const Buffers::Buffer *buffer)=0;
+    virtual void write(const byte_array *bytes)=0;
+
+    json::value *getJsonObject(const Buffers::Buffer *buffer);
+    void writeJson(const Buffers::Buffer *buffer);
+    void writeJson(const Buffers::buffer_vec_type buffers);
+    void writeMetaJson(const tring &source);
+signals:
+
+public slots:
+    void writeBuffer(const Buffers::Buffer*);
+};
+
+/**
+ * @brief The ResponseWriter class writes over HTTP
+ */
+class ResponseWriter :
+    public Writer
+{
+public:
+    /**
+     * @brief getResponse
+     * @return Response*
+     */
+    Response *getResponse(){return (Response*)parent(); }
+    explicit ResponseWriter(Response *parent):Writer((Object*)parent){}
+public:
+    virtual void write(const Buffers::Buffer *buffer);
+    virtual void write(const byte_array *bytes);
+};
+
+class FileWriter :
+    public Writer,
+    public Buffers::Acceptor
+{
+    explicit FileWriter(string const& filename);
+public:    
+    Format format;
+    tring getFilePath()const{return filePath;}
+    QFile &getFile(){return file;}
+    void write(const Buffers::Buffer *buffer);
+    void write(const byte_array *bytes);
+    void getStatus(json::value *status);
+
+    void accept(const Buffers::Buffer *buffer);
+    void flush(const Buffers::Buffer *buffer);
+
+    friend class Files;
+    friend void Files::getStatus(json::value *status);
+    /**
+     * @brief setDevice
+     * @param _device ofstream
+     */
+    void setDevice(ofstream &&_device){
+        device = std::move(_device);
+    }
+    /**
+     * @brief getDevice
+     * @return ofstream
+     */
+    ofstream &getDevice(){
+        return device;
+    }
+private:
+    ofstream &device;
+    string filePath;
+    posix_time::ptime current;
+};
+
+///**
+// * @brief The SocketWriter class transmits over UDP
+// */
+//class SocketWriter :
+//    public Writer
+//{
+//public:
+//    explicit SocketWriter(QObject *parent = 0):Writer(parent){}
+//    /**
+//     * @brief setSocket
+//     * @param _Socket ofstream
+//     */
+//    void setSocket(ofstream &&_Socket){
+//        m_socket = std::move(_Socket);
+//    }
+//    /**
+//     * @brief getSocket
+//     * @return ofstream
+//     */
+//    ofstream &getSocket(){
+//        return m_socket;
+//    }
+//private:
+//    Socket *m_socket;
+//};
+
+extern Files files;
+
+#endif // WRITER_H

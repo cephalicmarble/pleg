@@ -1,6 +1,8 @@
 #ifndef PLEGAPP_H
 #define PLEGAPP_H
 
+#include "application.h"
+
 namespace GStreamer {
     class QSGStreamer;
 }
@@ -14,10 +16,10 @@ class PlegApplication
 public:
     PlegApplication();
     Bluetooth *startBluetooth(const char* task);
-#if defined(GSTREAMER)
     GStreamer::QSGStreamer *startGStreamer(const char* task);
-#endif
 };
+
+extern drumlin::Application<PlegApplication> *app;
 
 } // namespace Pleg
 

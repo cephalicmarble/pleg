@@ -6,6 +6,8 @@
 #include <boost/thread/recursive_mutex.hpp>
 using namespace boost;
 
+namespace drumlin {
+
 /**
  * @brief mutex_call_1 : template mutex call pointer to member function type
  */
@@ -149,5 +151,7 @@ CPS_call_void(mutex_call_1<Class,Return,Param> _func,Param _param)
 {
     return CPS_void<mutex_call_1<Class,Return,Param>>(_func,_param);
 }
+
+} // namespace drumlin
 
 #endif // MUTEXCALL_H

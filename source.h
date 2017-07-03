@@ -1,122 +1,127 @@
-#ifndef QSSOURCE_H
-#define QSSOURCE_H
+#ifndef SOURCE_H
+#define SOURCE_H
 
 #include <pleg.h>
 using namespace Pleg;
+#include "tao_forward.h"
+using namespace tao;
 #include <string>
-#include "boost/date_time/posix_time/posix_time.hpp"
 #include <map>
+using namespace std;
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/asio.hpp>
+#include <boost/uuid/uuid.hpp>
+using namespace boost;
+#include "object.h"
 #include "mutexcall.h"
 #include "buffer.h"
 #include "registry.h"
-#include "tao_forward.h"
-using namespace tao;
+using namespace drumlin;
+using namespace Pleg;
 
-class QSRequest;
-class QSBluetoothLEDevice;
-#if defined(GSTREAMER)
+class Request;
+//class BluetoothLEDevice;
 #include "gstreamer.h"
-#endif
-#if defined(QTGSTREAMER)
-#include "qtgstreamer.h"
-#endif
+
+#define SourceTypes (\
+    HeartRate,\
+    BatteryLevel,\
+    Mock,\
+    Null,\
+    Gstreamer,\
+    Offset\
+)
+ENUM(SourceType,SourceTypes)
 
 namespace Sources {
 
 /**
- * @brief The QSSource class : represents an abstract data source
+ * @brief The Source class : represents an abstract data source
  */
-class QSSource :
-    public QObject,
-    public QSWorkObject
+class Source :
+    public Object,
+    public WorkObject
 {
-    Q_OBJECT
-    quint64 tick = 0;
-    size_t memory;
-    std::string name;
 public:
-    enum Type {
-        HeartRate,
-        BatteryLevel,
-        Mock,
-        Null,
-        Video,
-        Offset
-    };
-    Q_ENUM(Type)
-    Type type;
+    typedef SourceType Type;
 
-    bool deleting = false;
-    QSSource(std::string const& _name):QObject(),name(_name){}
-    QSSource():QObject(),name("source"){}
-    virtual ~QSSource();
+    Source(std::string const& _name):Object(),name(_name){}
+    Source():Object(),name("source"){}
+    virtual ~Source();
     virtual void stop(){}
-    virtual quint64 nextTick(){
+    virtual guint64 nextTick(){
         return ++tick;
     }
-    std::string const& getName()const { return name; }
+    string const& getName()const { return name; }
     void setMemory(size_t _memory){ memory = _memory; }
 
     /**
-     * @brief QSSource::writeNextValue
+     * @brief Source::writeNextValue
      * @param bytes void*
      * @param len quint32
      */
     virtual void writeNext(void *bytes, quint32 len){}
     virtual void writeNext();
-    virtual quint32 lengthData(){ return 0; }
-    virtual quint32 getTTL(){ return 2000; }
-    virtual quint32 getTau(){ return 1000; }
+    virtual guint32 lengthData(){ return 0; }
+    virtual guint32 getTTL(){ return 2000; }
+    virtual guint32 getTau(){ return 1000; }
     virtual size_t getAlign(){ return 1; }
-    virtual quint32 sizeT(){ return 0; }
+    virtual guint32 sizeT(){ return 0; }
 
     virtual bool isDestructing(){return false;}
-    virtual QUuid getUuid(){ return QUuid(); }
+    virtual uuids::uuid getUuid(){ return uuids::uuid(); }
 
     operator const char*()const{ return name.c_str(); }
     virtual void report(json::value *obj,ReportType type)const;
 
-    virtual void writeToFile(QSRequest *,QString rpath);
+    virtual void writeToFile(Request *,string rpath);
+
+    Type type;
+    bool deleting = false;
+private:
+    guint64 tick = 0;
+    size_t memory;
+    string name;
 };
 
 /**
- * @brief The QSSource class : represents an abstract data source
+ * @brief The Source class : represents an abstract data source
  */
 template <size_t _len = 512>
-class QSBufferedSource :
-    public QSSource
+class BufferedSource :
+    public Source
 {
 protected:
-    quint8 data[_len];
-    const quint32 maxlen = _len;
-    quint32 len;
-    QUuid uuid;
+    guint8 data[_len];
+    const guint32 maxlen = _len;
+    guint32 len;
+    uuids::uuid uuid;
 public:
     /**
-     * @brief QSBufferedSource : default constructor
+     * @brief BufferedSource : default constructor
      */
-    QSBufferedSource(std::string const& name):QSSource(name){}
+    BufferedSource(std::string const& name):Source(name){}
 
-    quint8 *_data(){ return data; }
+    guint8 *_data(){ return data; }
     /**
-     * @brief QSBufferedSource::writeNext : buffer next sample
+     * @brief BufferedSource::writeNext : buffer next sample
      */
-    virtual void writeNextValue(const QByteArray &value, const QUuid &_uuid)
+    virtual void writeNextValue(const byte_array &value, const uuids::uuid &_uuid)
     {
         uuid = _uuid;
-        memcpy((void*)data,(void*)value.data(),len = qMin((quint32)value.length(),maxlen));
+        memcpy((void*)data,(void*)value.data(),len = qMin((guint32)value.length(),maxlen));
     }
 
     /**
-     * @brief QSBufferedSource::lengthData : return the buffered sample length
+     * @brief BufferedSource::lengthData : return the buffered sample length
      * @return quint32
      */
-    virtual quint32 lengthData()
+    virtual guint32 lengthData()
     {
         return len;
     }
 
-    virtual quint32 sizeT()
+    virtual guint32 sizeT()
     {
         return maxlen;
     }
@@ -124,10 +129,10 @@ public:
     /**
      * @brief read : from the input buffer
      * @param buf void*
-     * @param len quint32
-     * @return quint32
+     * @param len guint32
+     * @return guint32
      */
-    virtual quint32 read(void *buf,quint32 len)
+    virtual guint32 read(void *buf,guint32 len)
     {
         if(!lengthData())
             return 0;
@@ -139,7 +144,7 @@ public:
      * @brief getUuid
      * @return QUuid
      */
-    virtual QUuid getUuid(){ return uuid; }
+    virtual uuids::uuid getUuid(){ return uuid; }
 
     virtual size_t getAlign(){ return alignof(data); }
 
@@ -150,96 +155,96 @@ public:
 };
 
 template <class T>
-class QSTypedSource :
-    public QSSource
+class TypedSource :
+    public Source
 {
 protected:
     T t;
-    QUuid uuid;
+    uuids::uuid uuid;
 public:
     /**
-     * @brief QSTypedSource : default constructor
+     * @brief TypedSource : default constructor
      */
-    QSTypedSource(std::string const& name):QSSource(name){}
+    TypedSource(string const& name):Source(name){}
     /**
      * @brief getData
-     * @return T* where T=the buffered data type (see QSHeartRateSource)
+     * @return T* where T=the buffered data type (see HeartRateSource)
      */
     T*getData(){ return &t; }
     virtual operator const char*(){ return "typed"; }
     /**
-     * @brief QSTypedSource<T>::lengthData : return the buffered sample length
+     * @brief TypedSource<T>::lengthData : return the buffered sample length
      * @return quint32
      */
-    virtual quint32 lengthData()
+    virtual guint32 lengthData()
     {
         return sizeT();
     }
 
-    virtual quint32 sizeT()
+    virtual guint32 sizeT()
     {
         return sizeof(T);
     }
 
     /**
-     * @brief QSTypedSource<T>::writeNextValue
+     * @brief TypedSource<T>::writeNextValue
      * @param bytes void*
      * @param len quint32
      */
-    void writeNext(void *bytes, quint32 len)
+    void writeNext(void *bytes, guint32 len)
     {
-        Buffers::QSSourceBuffer *buf(new Buffers::QSSourceBuffer(this));
+        Buffers::SourceBuffer *buf(new Buffers::SourceBuffer(this));
         memcpy(getData()->data,bytes,len);
         buf->getRelevance()->setSource(this);
         buf->TTL(getTTL());
-        Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::QSSourceBuffer*>(buf)));
+        Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
     }
 
     /**
      * @brief getUuid
      * @return QUuid
      */
-    virtual QUuid getUuid(){ return uuid; }
+    virtual uuids::uuid getUuid(){ return uuid; }
 
     virtual size_t getAlign(){ return alignof(T); }
 };
 
-class QSSourceRegistry :
-    public QSRegistry<QSSource>
+class SourceRegistry :
+    public Registry<Source>
 {
 public:
     /**
-     * @brief add : TBC from QSServer only, inserts a new QString QSSource* mapping
-     * @param str QString
-     * @param src QSSource*
+     * @brief add : TBC from Server only, inserts a new tring Source* mapping
+     * @param str tring
+     * @param src Source*
      */
-    void add(const std::string &str,QSSource *src)
+    void add(const string &str,Source *src)
     {
-        QMutexLocker ml(&mutex);
+        lock_guard l(&mutex);
         src->setMemory(Allocator(CPS_call_void(Buffers::registerSource,src)));
-        QSRegistry<QSSource>::add(str,src);
+        Registry<Source>::add(str,src);
     }
 
     /**
-     * @brief remove : remove a QString QSSource* mapping, delete the QSSource
+     * @brief remove : remove a tring Source* mapping, delete the Source
      * @param str
      */
-    void remove(const std::string &str)
+    void remove(const string &str)
     {
-        QMutexLocker ml(&mutex);
+        lock_guard l(&mutex);
         Allocator(CPS_call_void(Buffers::unregisterSource,map->at(str)));
-        QSRegistry<QSSource>::remove(str);
+        Registry<Source>::remove(str);
     }
 
     /**
-     * @brief removeAll : remove a QString QSSource* mapping, delete the QSSource
+     * @brief removeAll : remove a tring Source* mapping, delete the Source
      * @param str
      */
     void removeAll()
     {
-        QMutexLocker ml(&mutex);
+        lock_guard l(&mutex);
         Allocator(CPS_call_void(Buffers::unregisterSources,0));
-        QSRegistry<QSSource>::removeAll();
+        Registry<Source>::removeAll();
     }
     friend void Sources::getStatus(json::value*);
 };
@@ -247,111 +252,89 @@ public:
 /**
  * @brief sources_type : map of named sources
  */
-typedef QSSourceRegistry sources_type;
+typedef SourceRegistry sources_type;
 extern sources_type sources;
 
 void getStatus(json::value *status);
 
 /**
- * @brief The QSMockSource class : enumerates the alphabet into a buffer
+ * @brief The MockSource class : enumerates the alphabet into a buffer
  */
-class QSMockSource :
-    public QSBufferedSource<32>
+class MockSource :
+    public BufferedSource<32>
 {
-    Q_OBJECT
-
-    typedef QSBufferedSource<32> Base;
-    QTimer timer;
+    typedef BufferedSource<32> Base;
 public:
-    QSMockSource();
+    MockSource();
     void start();
-    virtual void writeNext(void *buf,quint32 len);
-    virtual QUuid getUuid(){ return QUuid("1"); }
-    void stop(){
-        timer.stop();
-    }
-public slots:
-    void timedOut();
+    virtual void writeNext(void *buf,guint32 len);
+    virtual uuids::uuid getUuid(){ return Pleg::string_gen("1"); }
+    void stop();
+    void timedOut(const system::error_code& e);
+private:
+    asio::deadline_timer timer;
 };
 
 /**
- * @brief The QSNullSource class : does nothing.
+ * @brief The NullSource class : does nothing.
  */
-class QSNullSource : public QSSource
+class NullSource : public Source
 {
 public:
-    QSNullSource():QSSource("null"){ type = Null; }
-    virtual quint32 lengthData(){ return 0; }
-    virtual void writeNext(void *buf,quint32 len);
+    NullSource():Source("null"){ type = Null; }
+    virtual guint32 lengthData(){ return 0; }
+    virtual void writeNext(void *buf,guint32 len);
     void stop(){}
 };
 
-#if defined(GSTREAMER) || defined(QTGSTREAMER)
-
-class QSGStreamerSourceBase : public QSSource
+class GStreamerSourceBase : public Source
 {
 public:
-    QSGStreamerSourceBase(std::string const& _name):QSSource(_name){}
+    GStreamerSourceBase(std::string const& _name):Source(_name){}
 };
 
-class QSGStreamerSource :
-    public QSGStreamerSourceBase
+class GStreamerSampleSource :
+    public GStreamerSourceBase,
+    public GStreamer::GStreamerSrc
 {
-    Q_OBJECT
-
-    GStreamer::QSGStreamerSrc *src;
-    json::value *meta;
 public:
-    QSGStreamerSource(GStreamer::QSGStreamer *gst,std::string const& _name);
-    ~QSGStreamerSource();
-    GStreamer::QSGStreamerSrc *getSrc()const{ return src; }
-    virtual quint32 lengthData();
-    virtual quint32 getTTL();
-    virtual quint32 getTau();
+    GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize);
+    virtual guint32 lengthData();
+    virtual guint32 getTTL();
+    virtual guint32 getTau();
     virtual size_t getAlign();
-    virtual quint32 sizeT();
-    virtual QUuid getUuid();
-    void writeToFile(QSRequest *,QString rpath);
-    friend class GStreamer::QSGStreamerVideoStream;
-    friend class GStreamer::QSGStreamer;
-public slots:
-#if defined(QTGSTREAMER)
-    virtual void writeNext(QGst::SamplePtr const&);
-#elif defined(GSTREAMER)
-    void writeNext(void *mem,quint32 len);
-    virtual void writeNextSample(GObject *sample);
-#endif
-    void started();
-    void stop();
+    virtual guint32 sizeT();
+    virtual uuids::uuid getUuid();
+    void writeToFile(Request *,string rpath);
+    friend class GStreamer::GStreamerStreamSource;
+    friend class GStreamer::GStreamer;
+protected:
+    void writeNext(void *mem,guint32 len);
+    void writeNextSample(GObject *sample);
+private:
+    guint32 m_maxSampleSize;
+    json::value &meta;
 };
 
-class QSGStreamerOffsetSource :
-    public QSGStreamerSourceBase
+class GStreamerOffsetSource :
+    public GStreamerSourceBase,
+    public GStreamer::GStreamerStreamSource
 {
-    Q_OBJECT
-
-    GStreamer::QSGStreamerVideoFiler *src;
 public:
-    QSGStreamerOffsetSource(GStreamer::QSGStreamerVideoFiler *_src,std::string const& _name);
-    ~QSGStreamerOffsetSource();
-    virtual quint32 lengthData();
-    virtual quint32 getTTL();
-    virtual quint32 getTau();
+    GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name);
+    virtual guint32 lengthData();
+    virtual guint32 getTTL();
+    virtual guint32 getTau();
     virtual size_t getAlign();
-    virtual quint32 sizeT();
-    virtual QUuid getUuid();
-    QString getFilePath()const{ return src->getFilePath(); }
-    friend class GStreamer::QSGStreamerVideoFiler;
-    friend class GStreamer::QSGStreamer;
-public slots:
-    void writeNext(void *mem,quint32 len);
+    virtual guint32 sizeT();
+    virtual uuids::uuid getUuid();
+    friend class GStreamer::GStreamerStreamSource;
+    friend class GStreamer::GStreamer;
+    void writeNext(void *mem,guint32 len);
+protected:
     virtual void writeNextSample(GObject *sample);
-    void started();
-    void stop();
 };
-
-#endif // GSTREAMER
 
 }
 
-#endif // QSSOURCE_H
+#endif // SOURCE_H

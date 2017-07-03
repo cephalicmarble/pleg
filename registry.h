@@ -8,6 +8,7 @@ using namespace boost;
 #include <vector>
 #include <string>
 #include <memory>
+using namespace std;
 #include <boost/utility/enable_if.hpp>
 #include <tao_forward.h>
 using namespace tao;
@@ -38,19 +39,19 @@ class Registry
      * @brief le_devices_type : map of low energy devices
      */
 public:
-    typedef std::map<std::string,Type*> map_type;
+    typedef map<string,Type*> map_type;
     typedef typename map_type::value_type value_type;
     typedef typename map_type::iterator iterator;
     typedef typename map_type::const_iterator const_iterator;
     typedef Type mapped_type;
 protected:
-    std::unique_ptr<map_type> map;
+    unique_ptr<map_type> map;
 public:
     recursive_mutex mutex;
     Registry():map(new map_type()){}
     ~Registry(){}
 
-    typedef std::vector<std::string> names_type;
+    typedef vector<string> names_type;
     /**
      * @brief begin
      * @return map_type::iterator
@@ -66,7 +67,7 @@ public:
      * @param str string
      * @param src Source*
      */
-    void add(const std::string &str,Type *src)
+    void add(const string &str,Type *src)
     {
         lock_guard l(&mutex);
         map->insert({str,src});
@@ -76,7 +77,7 @@ public:
      * @brief remove : remove a string Source* mapping, delete the Source
      * @param str
      */
-    void remove(const std::string &str,bool noDelete = false);
+    void remove(const string &str,bool noDelete = false);
 
     /**
      * @brief removeAll : remove a QString QSSource* mapping, delete the QSSource
@@ -96,7 +97,7 @@ public:
 
     /**
      * @brief list : list the named registered entities
-     * @return std::vector<std::string>
+     * @return vector<string>
      */
     names_type list()
     {
@@ -110,14 +111,14 @@ public:
 
     /**
      * @brief fromString : find the named source
-     * @param name std::string
+     * @param name string
      * @return Source*
      */
     template <class T = Type>
-    T *fromString(const std::string &name)
+    T *fromString(const string &name)
     {
         lock_guard l(&mutex);
-        typename map_type::iterator it(std::find_if(map->begin(),map->end(),[name](typename map_type::value_type & pair){
+        typename map_type::iterator it(find_if(map->begin(),map->end(),[name](typename map_type::value_type & pair){
             return name == pair.first;
         }));
         if(it==map->end()){
@@ -132,9 +133,9 @@ public:
      * @return Source*
      */
     template <class T = Type>
-    T *fromString(const QString &name)
+    T *fromString(const string &name)
     {
-        return dynamic_cast<T*>(fromString<T>(name.toStdString()));
+        return dynamic_cast<T*>(fromString<T>(name));
     }
     /**
      * @brief fromString : find the named source
@@ -144,7 +145,7 @@ public:
     template <class T = Type>
     T * fromString(const char *str)
     {
-        return dynamic_cast<T*>(fromString<T>(std::string(str)));
+        return dynamic_cast<T*>(fromString<T>(string(str)));
     }
 };
 

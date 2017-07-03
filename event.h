@@ -43,6 +43,7 @@ void setQuietEvents(bool keepQuiet);
 \
     Gst_first,\
     GstConnectDevices,\
+    GstConnectPipeline,\
     GstStreamPort,\
     GstStreamFile,\
     GstStreamEnd,\

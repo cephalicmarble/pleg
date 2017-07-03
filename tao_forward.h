@@ -5,8 +5,8 @@
 #define TAOCPP_JSON_INCLUDE_JSON_HH
 
 #include <tao/json/external/optional.hpp>
-#include <tao/json/single.hh>
-#include <tao/json/traits.hh>
+#include <tao/json/single.hpp>
+#include <tao/json/traits.hpp>
 
 namespace tao { namespace json {
     template< template< typename ... > class Traits >

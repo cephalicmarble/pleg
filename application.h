@@ -68,9 +68,4 @@ private:
 
 } // namespace drumlin
 
-namespace Pleg
-{
-extern drumlin::Application<PlegApplication> *app;
-}
-
 #endif // APPLICATION_H

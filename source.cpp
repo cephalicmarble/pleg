@@ -1,13 +1,12 @@
-#include <qs.h>
-using namespace QS;
-#include <tao/json.hh>
+#include <pleg.h>
+using namespace Pleg;
+#include <tao/json.hpp>
 using namespace tao;
+#include <boost/uuid/string_generator.hpp>
+using namespace boost;
 #include "source.h"
-#include <QDebug>
 #include "buffer.h"
-#ifdef GSTREAMER
 #include "gstreamer.h"
-#endif
 #include "request.h"
 #include "files.h"
 #include <math.h>
@@ -15,20 +14,20 @@ using namespace tao;
 namespace Sources {
 
 /**
- * @brief QSSource::~QSSource : flush our buffers
+ * @brief Source::~Source : flush our buffers
  */
-QSSource::~QSSource()
+Source::~Source()
 {
-    const QSRelevance rel(std::move(Relevance::fromSource(this)));
+    const Relevance rel(std::move(Relevance::fromSource(this)));
     Buffers::Cache(CPS_call_void(Buffers::clearRelevantBuffers,&rel));
 }
 
 /**
- * @brief QSSource::writeNext : prepares a new buffer read from this source
+ * @brief Source::writeNext : prepares a new buffer read from this source
  */
-void QSSource::writeNext()
+void Source::writeNext()
 {
-    Buffers::QSSourceBuffer *buf(new Buffers::QSSourceBuffer(this));
+    Buffers::SourceBuffer *buf(new Buffers::SourceBuffer(this));
     if(!buf->isValid()){
         delete buf;
         return;
@@ -36,108 +35,124 @@ void QSSource::writeNext()
     writeNext(const_cast<void*>(buf->data<void>()),buf->length());
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::QSSourceBuffer*>(buf)));
+    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
 
-void QSSource::report(json::value *obj,ReportType type)const
+void Source::report(json::value *obj,ReportType type)const
 {
     obj->get_object().insert({"ticks",tick});
-    if(type & QSWorkObject::ReportType::Memory){
+    if(type & WorkObject::ReportType::Memory){
         obj->get_object().insert({"allocated",memory});
     }
 }
 
-void QSSource::writeToFile(QSRequest *req,QString rpath)
+void Source::writeToFile(Request *req,tring rpath)
 {
     Files::files.add(req->getRelevanceRef(),rpath);
 }
 
 /**
- * @brief QSMockSource::QSMockSource : default constructor
+ * @brief MockSource::MockSource : default constructor
  */
-QSMockSource::QSMockSource() : Base("mock")
+MockSource::MockSource() : Base("mock")
 {
     type = Mock;
-    timer.setInterval(1000);
-    connect(&timer,SIGNAL(timeout()),this,SLOT(timedOut()));
 }
 
 /**
- * @brief QSMockSource::timedOut : nextTick
+ * @brief MockSource::timedOut : nextTick
  */
-void QSMockSource::timedOut()
+void MockSource::timedOut(const system::error_code& e)
 {
-    if(!timer.isActive())return;
-    QSSource::writeNext();
+    Source::writeNext();
+    if(!e){
+        start();
+    }
 }
 
 /**
- * @brief QSMockSource::start
+ * @brief MockSource::start
  */
-void QSMockSource::start()
+void MockSource::start()
 {
-    timer.start();
+    timer.expires_from_now(posix_time::seconds(1));
+    timer.async_wait(boost::bind(timedOut,asio::placeholders::error));
+}
+
+void MockSource::stop()
+{
+    timer.expires_from_now(posix_time::microsec_clock::universal_time());
 }
 
 /**
- * @brief QSMockSource::read : writes the alphabet, with null terminating byte.
+ * @brief MockSource::read : writes the alphabet, with null terminating byte.
  * @param buf void*
  * @param len quint32
  * @return quint32 bytesWritten
  */
-void QSMockSource::writeNext(void *buf,quint32 len)
+void MockSource::writeNext(void *buf,quint32 len)
 {
-    (*(quint64*)buf) = std::round(100.0*(1.0*rand()/RAND_MAX));
+    (*(guint64*)buf) = round(100.0*(1.0*rand()/RAND_MAX));
 }
 
-#if defined(GSTREAMER)
-
-quint32 QSGStreamerSource::lengthData()
+GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize)
+    :GStreamerSourceBase(_name),GStreamer::GStreamerSrc(gst),m_maxSampleSize(maxSampleSize)
 {
-    return src->len;
+    LOCK
+    type = Gstreamer;
+    Config::JsonConfig gst_config("./gstreamer.json");
+    string key("/pipes/");
+    meta = gst_config.at(key+getName());
 }
 
-quint32 QSGStreamerSource::getTTL()
+void GStreamerSampleSource::writeNextSample(GObject *sample)
+{
+    if(!sample)
+        return;
+    GstBuffer *buffer = gst_sample_get_buffer(GST_SAMPLE(sample));
+    GstMapInfo info;
+    if(!buffer)
+        return;
+    if(gst_buffer_map(buffer,&info,GST_MAP_READ)){
+        writeNext(info.data,info.size);
+        gst_buffer_unmap(buffer,&info);
+    }
+}
+
+guint32 GStreamerSampleSource::lengthData()
+{
+    return len;
+}
+
+guint32 GStreamerSampleSource::getTTL()
 {
     return 500;
 }
 
-quint32 QSGStreamerSource::getTau()
+guint32 GStreamerSampleSource::getTau()
 {
     return floor(1000/src->fps);
 }
 
-size_t QSGStreamerSource::getAlign()
+size_t GStreamerSampleSource::getAlign()
 {
-    quint32 tmp[sizeT()];
+    guint32 tmp[sizeT()];
     return alignof(tmp);
 }
 
-quint32 QSGStreamerSource::sizeT()
+guint32 GStreamerSampleSource::sizeT()
 {
-    return 4*src->width*src->height;
+    return m_maxSampleSize;
 }
 
-QUuid QSGStreamerSource::getUuid()
+uuids::uuid GStreamerSampleSource::getUuid()
 {
-    return QUuid("gstreamer");
+    return Pleg::string_gen("gstreamer-sample");
 }
 
-#if defined(QTGSTREAMER)
-void QSGStreamerSource::writeNext(QGst::SamplePtr const& sample)
+void GStreamerSampleSource::writeNext(void *mem,guint32 len)
 {
-    QGst::BufferPtr buffer(sample->buffer());
-    Buffers::QSSourceBuffer *buf(new Buffers::QSSourceBuffer(this));
-    buf->m_len = buffer->size();
-    buffer->extract(0,buf->m_data,buf->m_len);
-    buf->getRelevance()->setSource(this);
-    buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::QSSourceBuffer*>(buf)));
-}
-#elif defined(GSTREAMER)
-void QSGStreamerSource::writeNext(void *mem,quint32 len)
-{
-    Buffers::QSSourceBuffer *buf(new Buffers::QSSourceBuffer(this));
+    Buffers::SourceBuffer *buf(new Buffers::SourceBuffer(this));
     if(!buf->isValid()){
         delete buf;
         return;
@@ -146,68 +161,81 @@ void QSGStreamerSource::writeNext(void *mem,quint32 len)
     memcpy(buf->m_data,mem,buf->m_len);
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::QSSourceBuffer*>(buf)));
+    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
-#endif
 
-void QSGStreamerSource::writeToFile(QSRequest *req,QString rpath)
+void GStreamerSampleSource::writeToFile(Request *req,string rpath)
 {
     req->getRelevance()->arguments.insert({"filepath",rpath});
-    QSRelevance rel(req->getRelevanceRef());
-    threads_type threads(app->findThread("gstreamer",QSThreadWorker::QSThreadType::gstreamer));
+    Relevance rel(req->getRelevanceRef());
+    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
     if(0==std::distance(threads.begin(),threads.end())){
         return;
     }
     bool already = false;
     for(threads_type::iterator::value_type const& thread : threads){
-        GStreamer::QSGStreamer *gst(dynamic_cast<GStreamer::QSGStreamer*>(thread->getWorker()));
+        GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
             return;
-        if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::QSGStreamer::jobs_type::value_type const& job){
+        if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::GStreamer::jobs_type::value_type const& job){
             return job.first == (rel.getSourceName()+".file");
         })) { already = true; break; }
-        make_pod_event(QSEvent::Type::GstStreamFile,"openFileSink",req)->send(thread);
+        make_pod_event(Event::Type::GstStreamFile,"openFileSink",req)->send(thread);
         break;
     }
     rel.setSourceName(rel.getSourceName()+".file");
     Files::files.add(rel,rpath);
     if(already)
-        make_event(QSEvent::Type::GstStreamFile,"open")->send(req->getQSThread());
+        make_event(Event::Type::GstStreamFile,"open")->send(req->getThread());
 }
 
-quint32 QSGStreamerOffsetSource::lengthData()
+GStreamerOffsetSource::GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name)
+    :GStreamerSourceBase(_name),GStreamer::GStreamerStreamSource(gst)
+{
+    LOCK
+    type = Offset;
+}
+
+void GStreamerOffsetSource::writeNextSample(GObject *sample)
+{
+    quint64 offset(src->getTick());
+    writeNext(&offset,sizeof(offset));
+    GStreamer::GStreamerStreamSource::writeFrame(sample);
+}
+
+quint32 GStreamerOffsetSource::lengthData()
 {
     return sizeof(quint64);
 }
 
-quint32 QSGStreamerOffsetSource::getTTL()
+quint32 GStreamerOffsetSource::getTTL()
 {
     return 500;
 }
 
-quint32 QSGStreamerOffsetSource::getTau()
+quint32 GStreamerOffsetSource::getTau()
 {
     return floor(1000/src->getSrc()->fps);
 }
 
-size_t QSGStreamerOffsetSource::getAlign()
+size_t GStreamerOffsetSource::getAlign()
 {
     return alignof(quint64);
 }
 
-quint32 QSGStreamerOffsetSource::sizeT()
+quint32 GStreamerOffsetSource::sizeT()
 {
     return sizeof(quint64);
 }
 
-QUuid QSGStreamerOffsetSource::getUuid()
+uuids::uuid GStreamerOffsetSource::getUuid()
 {
-    return QUuid("gstreamer");
+    return Pleg::string_gen("gstreamer-offset");
 }
 
-void QSGStreamerOffsetSource::writeNext(void *mem,quint32 len)
+void GStreamerOffsetSource::writeNext(void *mem,quint32 len)
 {
-    Buffers::QSSourceBuffer *buf(new Buffers::QSSourceBuffer(this));
+    Buffers::SourceBuffer *buf(new Buffers::SourceBuffer(this));
     if(!buf->isValid()){
         delete buf;
         return;
@@ -216,7 +244,7 @@ void QSGStreamerOffsetSource::writeNext(void *mem,quint32 len)
     memcpy(buf->m_data,mem,buf->m_len);
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::QSSourceBuffer*>(buf)));
+    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
 
 #endif
@@ -232,14 +260,14 @@ void getStatus(json::value *status)
         json::value obj{ {
             { "name", source.first },
             { "index", index++ },
-            { "type", QMetaEnum::fromType<QSSource::Type>().valueToKey(source.second->type) },
+            { "type", metaEnum<Source::Type>().toString(source.second->type) },
         } };
-        if(dynamic_cast<QSGStreamerSource*>(source.second)){
+        if(dynamic_cast<GStreamerSampleSource*>(source.second)){
             obj.get_object().insert({"actions","view,record"});
         }else{
             obj.get_object().insert({"actions","chart,record"});
         }
-        source.second->report(&obj,QSSource::ReportType::All);
+        source.second->report(&obj,Source::ReportType::All);
         array_sources.get_array().push_back(obj);
     }
     status->get_object().insert({"sources",array_sources});

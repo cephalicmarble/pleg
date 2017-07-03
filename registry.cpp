@@ -2,11 +2,12 @@
 
 #include "thread.h"
 #include "source.h"
+#include <boost/thread/lock_guard.hpp>
 
 template <>
 void Registry<WorkObject>::remove(const std::string &str,bool noDelete)
 {
-    QMutexLocker ml(&mutex);
+    lock_guard l(&mutex);
     typename map_type::iterator it(map->find(str));
     if(it!=map->end()){
         (*it).second->stop();
@@ -17,9 +18,9 @@ void Registry<WorkObject>::remove(const std::string &str,bool noDelete)
 }
 
 template <class Type>
-void QSRegistry<Type>::remove(const std::string &str,bool noDelete)
+void Registry<Type>::remove(const std::string &str,bool noDelete)
 {
-    QMutexLocker ml(&mutex);
+    lock_guard l(&mutex);
     typename map_type::iterator it(map->find(str));
     if(it!=map->end()){
         if(!noDelete)
@@ -28,5 +29,5 @@ void QSRegistry<Type>::remove(const std::string &str,bool noDelete)
     }
 }
 
-template class QSRegistry<Sources::QSSource>;
-template class QSRegistry<QSThreadWorker>;
+template class Registry<Sources::Source>;
+template class Registry<ThreadWorker>;
