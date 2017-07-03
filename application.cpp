@@ -207,6 +207,9 @@ void Application<T>::quit()
 template <class T>
 bool Application<T>::event(Event *pevent)
 {
+    if(Base::event(pevent)){
+        return true;
+    }
     try{
         if((quint32)event->type() < (quint32)Event::Type::first
         || (quint32)event->type() > (quint32)Event::Type::last){

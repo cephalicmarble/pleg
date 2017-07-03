@@ -41,7 +41,6 @@ public:
     void post(Event *event);
     void exec();
     bool event(Event *e);
-    virtual bool eventFilter(Object *obj, Event *event)=0;
     virtual void stop();
     void wait();
 
@@ -67,10 +66,5 @@ private:
 };
 
 } // namespace drumlin
-
-namespace Pleg
-{
-extern drumlin::Application<PlegApplication> *app;
-}
 
 #endif // APPLICATION_H

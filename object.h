@@ -10,6 +10,7 @@
 #include <boost/preprocessor.hpp>
 using namespace boost;
 using namespace std;
+#include "event.h"
 
 namespace drumlin {
 
@@ -42,6 +43,7 @@ class Object
 {
 public:
     Object(Object *parent = nullptr):m_parent(parent){}
+    virtual bool event(Event *){ return false; }
 private:
     Object *m_parent;
 };

@@ -1,6 +1,5 @@
 #include "object.h"
 
-Object::Object()
-{
+namespace drumlin {
 
 }

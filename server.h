@@ -1,53 +1,64 @@
-#ifndef QSSERVER_H
-#define QSSERVER_H
+#ifndef SERVER_H
+#define SERVER_H
 
-#include "object.h"
-
-#include <QTcpServer>
-#include <QMutex>
 #include <vector>
 #include <list>
 #include <iostream>
-#include "uri.h"
-#include "relevance.h"
+using namespace std;
+#include <boost/asio.hpp>
+#include <boost/thread/recursive_mutex.hpp>
+using namespace boost;
+#include "object.h"
 #include "socket.h"
 #include "thread.h"
 #include "signalhandler.h"
 #include "application.h"
+#include "connection.h"
+using namespace drumlin;
+#include "relevance.h"
+#include "uri.h"
 
-class QSRequest;
-class QSResponse;
-class QSBluetooth;
-namespace GStreamer {
-    class QSGStreamer;
+namespace drumlin {
+
+class Request;
+class Response;
+
 }
 
-struct QSRoute {
-    Q_GADGET
+namespace Pleg {
+
+class Bluetooth;
+namespace GStreamer {
+    class GStreamer;
+}
+
+#define verbs (\
+    NONE,\
+    HEAD,\
+    GET,\
+    POST,\
+    PATCH,\
+    CATCH,\
+    OPTIONS,\
+)
+ENUM(verbs_type,verbs)
+
+
+struct Route {
 public:
-    enum verbs_type {
-        NONE    = 0,
-        HEAD    = 1,
-        GET     = 2,
-        POST    = 4,
-        PATCH   = 8,
-        CATCH   = 16,
-        OPTIONS = 32,
-        CONTROL = PATCH | GET,
-    };
-    Q_ENUM(verbs_type)
-    int method;
-    QSUriParseFunc parse_func;
+    typedef verbs_type verbs_type;
+    verbs_type method;
+    UriParseFunc parse_func;
     const char*response_func;
-    QSRoute():method(NONE),parse_func(nullptr),response_func(nullptr){}
-    QSRoute(int _method,const QSUriParseFunc &&_parse_func,const char*_response_func)
+    Route():method(NONE),parse_func(nullptr),response_func(nullptr){}
+    Route(int _method,const UriParseFunc &&_parse_func,const char*_response_func)
         :method(_method),parse_func(std::move(_parse_func)),response_func(_response_func){}
     std::string toStdString(bool detail = false)const{
-        QString str(QMetaEnum::fromType<verbs_type>().valueToKey(method));
+        tring str(metaEnum<verbs_type>().toString(method));
         str += " " + parse_func.pattern;
         if(detail){
-            str += std::accumulate(parse_func.params.begin(), parse_func.params.end(), QString(),
-                [](const QString& a, const QString& b) -> QString {
+            str += std::accumulate(parse_func.params.begin(), parse_func.params.end(), tring(),
+                [](const tring& a, const tring& b) -> tring {
                     return a + (a.length() > 0 ? "," : "") + b;
                 }
             );
@@ -56,63 +67,53 @@ public:
     }
 };
 
-class QSTcpServer : public QTcpServer
-{
-    Q_OBJECT
-signals:
-    void incomingConnection(qintptr socketDescriptor);
-};
-
 /**
- * @brief The QSServer class : HTTP socket server
+ * @brief The Server class : HTTP socket server
  */
-class QSServer :
-    public QSApplication<QCoreApplication>,
-    public QSStatusReporter
+class Server :
+    public Application<PlegApplication>,
+    public StatusReporter,
+    public AsioServer<Request>
 {
-    Q_OBJECT
-    /**
-     * @brief routes_type : vector of QSUriParseFunc instances
-     */
-    QSTcpServer *server;
-    QStringList log;
 public:
-    typedef QSApplication<QCoreApplication> Base;
-    typedef std::vector<QSRoute> routes_type;
-private:
-    routes_type routes;
+    typedef Application<PlegApplication> ApplicationBase;
+    typedef AsioServer<Request> ServerBase;
+    /**
+     * @brief routes_type : vector of UriParseFunc instances
+     */
+    typedef std::vector<Route> routes_type;
 
     void defineRoutes();
 
-public:
-    static QMutex mutex;
-    bool closed = false;
     /**
      * @brief addRoute
-     * @param func QSUriParseFunc Uri::parser("{pattern?}/{pattern?}")
+     * @param func UriParseFunc Uri::parser("{pattern?}/{pattern?}")
      */
-    void addRoute(const QSUriParseFunc &&func,const char*response_func,int method = QSRoute::GET){
+    void addRoute(const UriParseFunc &&func,const char*response_func,int method = Route::GET){
         routes.push_back({method,std::move(func),response_func});
     }
     routes_type const& getRoutes()const{ return routes; }
-    QStringList &getLog(){ return log; }
     void writeLog()const;
-    explicit QSServer(int &argc,char *argv[]);
-    ~QSServer();
-    typedef std::pair<QSRelevance,QSServer::routes_type::iterator> route_return_type;
-    route_return_type select_route(QSRequest *request);
-    void startRequestThread(qintptr socketDescriptor);
-    bool eventFilter(QObject *obj, QEvent *event);
+    explicit Server(int &argc,char *argv[],int port);
+    ~Server();
+    typedef std::pair<Relevance,Server::routes_type::iterator> route_return_type;
+    route_return_type select_route(Request *request);
 
     void getStatus(json::value *status)const;
 
     operator const char*()const;
-    friend std::ostream &operator<<(std::ostream &stream,const QSServer &rel);
-    friend QDebug &operator<<(QDebug &stream,const QSServer &rhs);
-public slots:
+    friend ostream &operator<<(ostream &stream,const Server &rel);
     void stop();
     void start();
-    virtual void incomingConnection(qintptr socketDescriptor);
+private:
+    vector<string> &getLog(){ return log; }
+    friend class Pleg::log;
+public:
+    static recursive_mutex mutex;
+    bool closed = false;
+private:
+    routes_type routes;
+    vector<string> log;
 };
 
-#endif // QSSERVER_H
+#endif // SERVER_H

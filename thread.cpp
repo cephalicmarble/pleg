@@ -178,11 +178,11 @@ void ThreadWorker::stop()
 
 recursive_mutex ThreadWorker::critical_section;
 
-ThreadWorker::ThreadWorker() : QObject()
+ThreadWorker::ThreadWorker(Object *parent = nullptr) : Object(parent)
 {
 }
 
-ThreadWorker::ThreadWorker(string task) : QObject()
+ThreadWorker::ThreadWorker(string task) : Object()
 {
     thread = new Thread(task);
     thread->setWorker(this);

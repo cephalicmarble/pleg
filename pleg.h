@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cstdio>
 
+#include <boost/uuid/string_generator.hpp>
+
 #include <boost/asio.hpp>
 #include <boost/mpl/vector.hpp>
 #include <boost/mpl/for_each.hpp>
@@ -29,18 +31,19 @@ std::ostream& operator<< (std::ostream& strm, const boost::any& p) {
 
 namespace Pleg
 {
-    boost::asio::io_service io_service;
-
     class Server;
+
+    extern boost::uuids::string_generator string_gen;
 
     extern int retval;
     extern const char *nullstr;
 
     extern Server *main_server;
     //FIXME
-    //std::ostream &operator <<(std::ostream &stream, const QByteArray &bytes);
+    //std::ostream &operator <<(std::ostream &stream, const byte_array &bytes);
 }
 
 #define Debug() std::cerr
+#define Critical() std::cerr << "********"
 
 #endif // PLEG_H

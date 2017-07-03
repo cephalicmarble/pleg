@@ -11,7 +11,7 @@ using namespace std;
 #include <boost/lexical_cast.hpp>
 using namespace boost;
 
-namespace pleg {
+namespace Pleg {
 
 /**
  * @brief UriParseFunc::UriParseFunc : Reads arguments from the URI definition string.

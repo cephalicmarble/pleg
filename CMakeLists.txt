@@ -1,7 +1,7 @@
 project(pleg)
 
 set(TARGET pleg)
-add_compile_options(-g -W -Wall -Wextra -pedantic)
+add_compile_options(-g -W -Wall -Wextra -pedantic -DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -30,6 +30,6 @@ foreach(DIR ${INCLUDE_DIRS})
 	include_directories(${DIR})
 endforeach()
 
-find_package(Boost REQUIRED COMPONENTS system chrono date_time log program_options regex)
+find_package(Boost REQUIRED COMPONENTS system chrono date_time filesystem log program_options regex)
 include_directories(${Boost_INCLUDE_DIR})
 target_link_libraries(${TARGET} ${Boost_LIBRARIES})

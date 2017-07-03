@@ -5,14 +5,19 @@
 using namespace tao;
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/recursive_mutex.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
+using namespace boost;
 #include <list>
 #include <vector>
 #include <map>
 #include <memory>
 #include <utility>
+using namespace std;
 #include "relevance.h"
 #include "mutexcall.h"
 #include "exception.h"
+#include "glib.h"
 #ifdef _WIN32
 #include <windows.h>
 #define PAGE_SHIFT              12L
@@ -23,15 +28,15 @@ using namespace tao;
  * Forward declarations
  */
 namespace Sources {
-    class QSSource;
-    class QSGStreamerSource;
-    class QSGStreamerOffsetSource;
+    class Source;
+    class GStreamerSampleSource;
+    class GStreamerOffsetSource;
 }
 
 namespace Buffers {
 
-class QSBuffer;
-class QSSourceBuffer;
+class Buffer;
+class SourceBuffer;
 /**
  * @brief buffer_heap_type : where buffers go to die...
  */
@@ -53,34 +58,34 @@ public:
     void free(char *block);
     void toJson(json::value *status);
 };
-typedef std::map<Sources::QSSource*,heap_t*> buffer_heap_type;
+typedef std::map<Sources::Source*,heap_t*> buffer_heap_type;
 /**
- * @brief The QSAllocator class : represents chunks of memory
+ * @brief The Allocator class : represents chunks of memory
  */
-class QSAllocator
+class Allocator
 {
 protected:
     typedef buffer_heap_type heap_type;
     heap_type heaps;
     int do_unregisterHeap(heap_type::value_type &pair);
 public:
-    QMutex mutex;
-    QSAllocator();
-    ~QSAllocator();
-    int registerSource(Sources::QSSource *source);
-    int unregisterSource(Sources::QSSource *source);
+    recursive_mutex mutex;
+    Allocator();
+    ~Allocator();
+    int registerSource(Sources::Source *source);
+    int unregisterSource(Sources::Source *source);
     int unregisterSources(int);
-    void *alloc(Buffers::QSSourceBuffer *buffer);
-    int free(Buffers::QSSourceBuffer *buffer);
+    void *alloc(Buffers::SourceBuffer *buffer);
+    int free(Buffers::SourceBuffer *buffer);
     int getStatus(json::value *status);
 };
 
-typedef mutex_call_1<QSAllocator,int,Sources::QSSource*> registerSource_t;
-typedef mutex_call_1<QSAllocator,int,Sources::QSSource*> unregisterSource_t;
-typedef mutex_call_1<QSAllocator,int,int> unregisterSources_t;
-typedef mutex_call_1<QSAllocator,void*,QSSourceBuffer*> alloc_t;
-typedef mutex_call_1<QSAllocator,int,QSSourceBuffer*> free_t;
-typedef mutex_call_1<QSAllocator,int,json::value*> getAllocatorStatus_t;
+typedef mutex_call_1<Allocator,int,Sources::Source*> registerSource_t;
+typedef mutex_call_1<Allocator,int,Sources::Source*> unregisterSource_t;
+typedef mutex_call_1<Allocator,int,int> unregisterSources_t;
+typedef mutex_call_1<Allocator,void*,SourceBuffer*> alloc_t;
+typedef mutex_call_1<Allocator,int,SourceBuffer*> free_t;
+typedef mutex_call_1<Allocator,int,json::value*> getAllocatorStatus_t;
 
 extern registerSource_t registerSource;
 extern unregisterSource_t unregisterSource;
@@ -89,18 +94,18 @@ extern alloc_t alloc;
 extern free_t free;
 extern getAllocatorStatus_t getAllocatorStatus;
 
-extern QSAllocator allocator;
+extern Allocator allocator;
 
 /**
- * @brief Allocator : thread-safe heap monster for QSBufferCache
+ * @brief Allocator : thread-safe heap monster for BufferCache
  * template<class CPS>
  * @return CPS::Return
  */
 template <class CPS>
 typename CPS::Return Allocator(CPS cps)
 {
-    while(!allocator.mutex.tryLock()){
-        QThread::yieldCurrentThread();
+    while(!allocator.mutex.try_lock()){
+        this_thread::yield();
     }
     typename CPS::Return ret(cps(&allocator));
     allocator.mutex.unlock();
@@ -108,36 +113,36 @@ typename CPS::Return Allocator(CPS cps)
 }
 
 /**
- * @brief The QSBuffer class : represents a chunk of sample
+ * @brief The Buffer class : represents a chunk of sample
  */
-class QSBuffer
+class Buffer
 {
 public:
     typedef void* ptr_type;
 protected:
     ptr_type m_data;
-    quint32 m_len;
-    QSRelevance relevance;
-    QDateTime timestamp;
-    quint32 ttl;
+    guint32 m_len;
+    Relevance relevance;
+    posix_time::ptime timestamp;
+    guint32 ttl;
 public:
-    QSBuffer();
-    virtual ~QSBuffer();
+    Buffer();
+    virtual ~Buffer();
     bool isValid()const{ return !!m_data; }
     /**
      * @brief getRelevance
-     * @return QSRelevance*
+     * @return Relevance*
      */
-    QSRelevance *getRelevance()const{ return const_cast<QSRelevance*>(&relevance); }
+    Relevance *getRelevance()const{ return const_cast<Relevance*>(&relevance); }
     /**
      * @brief getRelevanceRef
-     * @return QSRelevance&
+     * @return Relevance&
      */
-    const QSRelevance &getRelevanceRef()const{ return relevance; }
+    const Relevance &getRelevanceRef()const{ return relevance; }
 
-    const QDateTime &getTimestampRef()const{ return timestamp; }
+    const posix_time::ptime &getTimestampRef()const{ return timestamp; }
 
-    void TTL(quint32 msecs);
+    void TTL(guint32 msecs);
     virtual void flush(){}
 
     /**
@@ -145,27 +150,27 @@ public:
      */
     template <class T>
     const T *data()const{ return (const T*)m_data; }
-    quint32 length()const;
+    guint32 length()const;
 
     virtual bool isDead()const;
-    virtual operator QString()const;
-    virtual operator QByteArray()const;
+    virtual operator tring()const;
+    virtual operator byte_array()const;
 
-    friend class Sources::QSGStreamerSource;
-    friend class Sources::QSGStreamerOffsetSource;
-    friend class QSAllocator;
+    friend class Sources::GStreamerSampleSource;
+    friend class Sources::GStreamerOffsetSource;
+    friend class Allocator;
 };
 
 /**
- * @brief The QSSourceBuffer class : has come straight from the sensor implementation
+ * @brief The SourceBuffer class : has come straight from the sensor implementation
  */
-class QSSourceBuffer :
-    public QSBuffer
+class SourceBuffer :
+    public Buffer
 {
 public:
-    Sources::QSSource *source;
-    QSSourceBuffer(Sources::QSSource *_source);
-    virtual ~QSSourceBuffer();
+    Sources::Source *source;
+    SourceBuffer(Sources::Source *_source);
+    virtual ~SourceBuffer();
 };
 
 /**
@@ -174,29 +179,29 @@ public:
 class Acceptor
 {
 public:
-    virtual void accept(const QSBuffer *buffer)=0;
-    virtual void flush(const QSBuffer *buffer)=0;
+    virtual void accept(const Buffer *buffer)=0;
+    virtual void flush(const Buffer *buffer)=0;
 };
 
 /**
  * @brief buffer_list_type : the buffers
  */
-typedef std::list<std::unique_ptr<QSBuffer>> buffer_list_type;
+typedef std::list<std::unique_ptr<Buffer>> buffer_list_type;
 /**
  * @brief buffer_vec_type : for function arguments
  */
-typedef std::vector<QSBuffer*> buffer_vec_type;
+typedef std::vector<Buffer*> buffer_vec_type;
 /**
- * @brief subs_map_type : relates a Buffers::Acceptor to a QSRelevance
+ * @brief subs_map_type : relates a Buffers::Acceptor to a Relevance
  */
-typedef std::map<QSRelevance,Acceptor*> subs_map_type;
+typedef std::map<Relevance,Acceptor*> subs_map_type;
 
-std::pair<const QSRelevance,Buffers::Acceptor*> make_sub(const QSRelevance &rel,Acceptor *a);
+std::pair<const Relevance,Buffers::Acceptor*> make_sub(const Relevance &rel,Acceptor *a);
 
 /**
- * @brief The QSBufferCache class : is our buffer heap
+ * @brief The BufferCache class : is our buffer heap
  */
-class QSBufferCache
+class BufferCache
 {
 protected:
     Acceptor *acceptor;
@@ -205,18 +210,18 @@ protected:
     typedef subs_map_type subs_type;
     subs_type subscriptions;
 protected:
-    char *allocate(Sources::QSSource *source,size_t n = 1);
+    char *allocate(Sources::Source *source,size_t n = 1);
 public:
-    QMutex mutex;
-    QSBufferCache();
-    ~QSBufferCache();
+    mutex m_mutex;
+    BufferCache();
+    ~BufferCache();
     bool isLocked();
-    quint32 addBuffer(const QSBuffer *buffer);
-    quint32 addSourceBuffer(const QSSourceBuffer *buffer);
-    quint32 flushDeadBuffers();
-    quint32 clearRelevantBuffers(const QSRelevance *rel);
-    quint32 callSubscribed(const QSBuffer *buffer,bool priority);
-    buffer_vec_type findRelevant(const QSRelevance *rel);
+    guint32 addBuffer(const Buffer *buffer);
+    guint32 addSourceBuffer(const SourceBuffer *buffer);
+    guint32 flushDeadBuffers();
+    guint32 clearRelevantBuffers(const Relevance *rel);
+    guint32 callSubscribed(const Buffer *buffer,bool priority);
+    buffer_vec_type findRelevant(const Relevance *rel);
     buffer_vec_type registerRelevance(subs_map_type::value_type sub);
     int unregisterAcceptor(Acceptor *acceptor);
     int getStatus(json::value *status);
@@ -225,13 +230,13 @@ public:
 /*
  * thread-safe calls
  */
-typedef mutex_call_1<QSBufferCache,quint32,const QSBuffer*> addBuffer_t;
-typedef mutex_call_1<QSBufferCache,quint32,const QSSourceBuffer*> addSourceBuffer_t;
-typedef mutex_call_1<QSBufferCache,quint32,const QSRelevance*> clearRelevantBuffers_t;
-typedef mutex_call_1<QSBufferCache,buffer_vec_type,const QSRelevance*> findRelevant_t;
-typedef mutex_call_1<QSBufferCache,buffer_vec_type,subs_map_type::value_type> registerRelevance_t;
-typedef mutex_call_1<QSBufferCache,int,Acceptor*> unregisterAcceptor_t;
-typedef mutex_call_1<QSBufferCache,int,json::value *> getCacheStatus_t;
+typedef mutex_call_1<BufferCache,guint32,const Buffer*> addBuffer_t;
+typedef mutex_call_1<BufferCache,guint32,const SourceBuffer*> addSourceBuffer_t;
+typedef mutex_call_1<BufferCache,guint32,const Relevance*> clearRelevantBuffers_t;
+typedef mutex_call_1<BufferCache,buffer_vec_type,const Relevance*> findRelevant_t;
+typedef mutex_call_1<BufferCache,buffer_vec_type,subs_map_type::value_type> registerRelevance_t;
+typedef mutex_call_1<BufferCache,int,Acceptor*> unregisterAcceptor_t;
+typedef mutex_call_1<BufferCache,int,json::value *> getCacheStatus_t;
 
 extern addBuffer_t addBuffer;
 extern addSourceBuffer_t addSourceBuffer;
@@ -241,32 +246,32 @@ extern registerRelevance_t registerRelevance;
 extern unregisterAcceptor_t unregisterAcceptor;
 extern getCacheStatus_t getCacheStatus;
 
-extern QSBufferCache cache;
+extern BufferCache cache;
 
 /**
- * @brief Cache : thread-safe receiver for QSBufferCache
+ * @brief Cache : thread-safe receiver for BufferCache
  * template<class CPS>
  * @return CPS::Return
  */
 template <class CPS>
 typename CPS::Return Cache(CPS cps)
 {
-    while(!cache.mutex.tryLock()){
-        QThread::yieldCurrentThread();
+    while(!cache.m_mutex.try_lock()){
+        this_thread::yield();
     }
     typename CPS::Return ret(cps(&cache));
-    cache.mutex.unlock();
+    cache.m_mutex.unlock();
     return ret;
 }
 
 template <class MemFun>
 typename MemFun::result_type Cache(MemFun fun,typename MemFun::second_argument_type &arg)
 {
-    while(!cache.mutex.tryLock()){
+    while(!cache.m_mutex.try_lock()){
         QThread::yieldCurrentThread();
     }
     typename MemFun::result_type ret(fun(cache,arg));
-    cache.mutex.unlock();
+    cache.m_mutex.unlock();
     return ret;
 }
 

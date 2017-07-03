@@ -4,7 +4,7 @@
 #include "object.h"
 #include <vector>
 
-namespace pleg {
+namespace Pleg {
 
 class Relevance;
 /**
