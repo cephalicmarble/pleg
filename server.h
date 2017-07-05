@@ -4,9 +4,11 @@
 #include <vector>
 #include <list>
 #include <iostream>
+#include <numeric>
 using namespace std;
 #include <boost/asio.hpp>
 #include <boost/thread/recursive_mutex.hpp>
+#include <boost/functional.hpp>
 using namespace boost;
 #include "object.h"
 #include "socket.h"
@@ -17,55 +19,18 @@ using namespace boost;
 using namespace drumlin;
 #include "relevance.h"
 #include "uri.h"
-
-namespace drumlin {
-
-class Request;
-class Response;
-
-}
+#include "route.h"
+#include "request.h"
+#include "response.h"
+#include "log.h"
 
 namespace Pleg {
 
-class Bluetooth;
+class Response;
+//class Bluetooth;
 namespace GStreamer {
     class GStreamer;
 }
-
-#define verbs (\
-    NONE,\
-    HEAD,\
-    GET,\
-    POST,\
-    PATCH,\
-    CATCH,\
-    OPTIONS,\
-)
-ENUM(verbs_type,verbs)
-
-
-struct Route {
-public:
-    typedef verbs_type verbs_type;
-    verbs_type method;
-    UriParseFunc parse_func;
-    const char*response_func;
-    Route():method(NONE),parse_func(nullptr),response_func(nullptr){}
-    Route(int _method,const UriParseFunc &&_parse_func,const char*_response_func)
-        :method(_method),parse_func(std::move(_parse_func)),response_func(_response_func){}
-    std::string toString(bool detail = false)const{
-        string str(metaEnum<verbs_type>().toString(method));
-        str += " " + parse_func.pattern;
-        if(detail){
-            str += std::accumulate(parse_func.params.begin(), parse_func.params.end(), tring(),
-                [](const tring& a, const tring& b) -> tring {
-                    return a + (a.length() > 0 ? "," : "") + b;
-                }
-            );
-        }
-        return str;
-    }
-};
 
 /**
  * @brief The Server class : HTTP socket server
@@ -81,7 +46,12 @@ public:
     /**
      * @brief routes_type : vector of UriParseFunc instances
      */
-    typedef std::vector<Route> routes_type;
+    typedef std::vector<Route<Get>> get_routes_type;
+    typedef std::vector<Route<Head>> head_routes_type;
+    typedef std::vector<Route<Options>> options_routes_type;
+    typedef std::vector<Route<Post>> post_routes_type;
+    typedef std::vector<Route<Patch>> patch_routes_type;
+    typedef std::vector<Route<Catch>> catch_routes_type;
 
     void defineRoutes();
 
@@ -89,15 +59,55 @@ public:
      * @brief addRoute
      * @param func UriParseFunc Uri::parser("{pattern?}/{pattern?}")
      */
-    void addRoute(const UriParseFunc &&func,const char*response_func,int method = Route::GET){
-        routes.push_back({method,std::move(func),response_func});
+    void get(const UriParseFunc &&func,void (Get::*response_func)()){
+        get_routes.push_back(make_route(std::move(func),response_func));
     }
-    routes_type const& getRoutes()const{ return routes; }
-    void writeLog()const;
-    explicit Server(int &argc,char *argv[],int port);
+    void head(const UriParseFunc &&func,void (Head::*response_func)()){
+        head_routes.push_back(make_route(std::move(func),response_func));
+    }
+    void options(const UriParseFunc &&func,void (Options::*response_func)()){
+        options_routes.push_back(make_route(std::move(func),response_func));
+    }
+    void post(const UriParseFunc &&func,void (Post::*response_func)()){
+        post_routes.push_back(make_route(std::move(func),response_func));
+    }
+    void patch(const UriParseFunc &&func,void (Patch::*response_func)()){
+        patch_routes.push_back(make_route(std::move(func),response_func));
+    }
+    void catchall(const UriParseFunc &&func,void (Catch::*response_func)()){
+        catch_routes.push_back(make_route(std::move(func),response_func));
+    }
+    template <class Response>
+    std::vector<Route<Response>> const& getRoutes()const;
+    void writeLog();
+    Server(int argc,char **argv,int port);
     ~Server();
-    typedef std::pair<Relevance,Server::routes_type::iterator> route_return_type;
-    route_return_type select_route(Request *request);
+    /**
+     * @brief Server::select_route : find a route
+     * @param request
+     * @return
+     */
+    template <class ResponseClass>
+    bool select_route(Request *request,ResponseClass *response,Relevance *relevance)
+    {
+        typedef std::vector<Route<ResponseClass>> routes_type;
+        lock_guard<recursive_mutex> l(mutex);
+        routes_type const& routes(getRoutes<ResponseClass>());
+        auto it = std::find_if(routes.begin(),routes.end(),[relevance,request](auto & route){
+            *relevance = route.parse_func(request->getUrl());
+            if(relevance->toBool()){
+                return true;
+            }
+            return false;
+        });
+        if(it == routes.end()){
+            Debug() << "Irrelevant HTTP";
+            return false;
+        }
+        Debug() << it->parse_func.pattern;
+        (*it)(const_cast<ResponseClass*>(response));
+        return true;
+    }
 
     void getStatus(json::value *status)const;
 
@@ -107,13 +117,33 @@ public:
     void start();
 private:
     vector<string> &getLog(){ return log; }
-    friend class Pleg::log;
+    friend class Pleg::Log;
 public:
     static recursive_mutex mutex;
     bool closed = false;
 private:
-    routes_type routes;
+    get_routes_type get_routes;
+    head_routes_type head_routes;
+    options_routes_type options_routes;
+    post_routes_type post_routes;
+    patch_routes_type patch_routes;
+    catch_routes_type catch_routes;
     vector<string> log;
 };
+
+template <>
+std::vector<Route<Get>> const& Server::getRoutes<Get>()const;
+template <>
+std::vector<Route<Head>> const& Server::getRoutes<Head>()const;
+template <>
+std::vector<Route<Options>> const& Server::getRoutes<Options>()const;
+template <>
+std::vector<Route<Post>> const& Server::getRoutes<Post>()const;
+template <>
+std::vector<Route<Patch>> const& Server::getRoutes<Patch>()const;
+template <>
+std::vector<Route<Catch>> const& Server::getRoutes<Catch>()const;
+
+} // namespace Pleg
 
 #endif // SERVER_H

@@ -1,8 +1,10 @@
 #ifndef TAO_FORWARD_H
 #define TAO_FORWARD_H
 
-#ifndef TAOCPP_JSON_INCLUDE_JSON_HH
-#define TAOCPP_JSON_INCLUDE_JSON_HH
+#ifndef TAOCPP_JSON_INCLUDE_JSON_HPP
+#define TAOCPP_JSON_INCLUDE_JSON_HPP
+
+typedef unsigned char byte;
 
 #include <tao/json/external/optional.hpp>
 #include <tao/json/single.hpp>
@@ -20,7 +22,7 @@ namespace tao { namespace json {
     typedef std::initializer_list< object_t::value_type > object_initializer;
 } }
 
-#endif // TAOCPP_JSON_INCLUDE_JSON_HH
+#endif // TAOCPP_JSON_INCLUDE_JSON_HPP
 
 namespace tao { namespace json {
     using array_t = std::vector< value >;

@@ -39,7 +39,7 @@ class Registry
      * @brief le_devices_type : map of low energy devices
      */
 public:
-    typedef map<string,Type*> map_type;
+    typedef std::map<string,Type*> map_type;
     typedef typename map_type::value_type value_type;
     typedef typename map_type::iterator iterator;
     typedef typename map_type::const_iterator const_iterator;
@@ -69,7 +69,7 @@ public:
      */
     void add(const string &str,Type *src)
     {
-        lock_guard l(&mutex);
+        lock_guard<recursive_mutex> l(mutex);
         map->insert({str,src});
     }
 
@@ -85,7 +85,7 @@ public:
      */
     void removeAll(bool noDelete = false)
     {
-        lock_guard l(&mutex);
+        lock_guard<recursive_mutex> l(mutex);
         for(auto pair : *map){
             WorkObject *wo(dynamic_cast<WorkObject*>(pair.second));
             if(!!wo) wo->stop();
@@ -101,7 +101,7 @@ public:
      */
     names_type list()
     {
-        lock_guard ml(&mutex);
+        lock_guard<recursive_mutex> l(mutex);
         names_type list;
         for(auto pair : *map){
             list.push_back(pair.first);
@@ -117,7 +117,7 @@ public:
     template <class T = Type>
     T *fromString(const string &name)
     {
-        lock_guard l(&mutex);
+        lock_guard<recursive_mutex> l(mutex);
         typename map_type::iterator it(find_if(map->begin(),map->end(),[name](typename map_type::value_type & pair){
             return name == pair.first;
         }));
@@ -133,20 +133,12 @@ public:
      * @return Source*
      */
     template <class T = Type>
-    T *fromString(const string &name)
-    {
-        return dynamic_cast<T*>(fromString<T>(name));
-    }
-    /**
-     * @brief fromString : find the named source
-     * @param name string
-     * @return Source*
-     */
-    template <class T = Type>
     T * fromString(const char *str)
     {
         return dynamic_cast<T*>(fromString<T>(string(str)));
     }
 };
+
+} // namespace drumlin
 
 #endif // REGISTRY_H

@@ -10,6 +10,7 @@ class Log
 {
     std::stringstream ss;
     bool empty = true;
+    lock_guard<recursive_mutex> lock;
 public:
     Log();
     ~Log();
@@ -18,7 +19,6 @@ public:
 
 } // namespace Pleg
 
-extern Pleg::Log &log();
-#define Log() log()
+extern Pleg::Log log();
 
 #endif // LOG_H

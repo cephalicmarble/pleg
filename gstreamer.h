@@ -4,6 +4,7 @@
 #include "tao_forward.h"
 using namespace tao;
 #include <boost/thread/mutex.hpp>
+#include <boost/thread/lock_guard.hpp>
 using namespace boost;
 #include <math.h>
 #include "thread.h"
@@ -42,13 +43,21 @@ using namespace drumlin;
 #include <sys/stat.h>
 #endif
 
-namespace Streams {
-class GStreamerStream;
-}
+#define PipelineStates ( \
+    StateVoidPending,\
+    StateNull,\
+    StateReady,\
+    StatePaused,\
+    StatePlaying\
+)
+ENUM(PipelineState,PipelineStates)
+
+namespace Pleg {
 
 namespace Sources {
 class GStreamerSampleSource;
 class GStreamerOffsetSource;
+class GStreamerSourceBase;
 class SourceRegistry;
 }
 
@@ -88,8 +97,10 @@ class GStreamerPipe :
     public WorkObject
 {
 public:
-    GStreamerPipe(GStreamer *gst);
+    GStreamerPipe(GStreamer *gst,string const& _name);
     virtual ~GStreamerPipe();
+
+    typedef PipelineState State;
 
     GStreamer *getGStreamer()const{return gstreamer;}
     GstState getState();
@@ -108,15 +119,9 @@ public:
     friend class Sources::GStreamerSampleSource;
     friend class Sources::GStreamerOffsetSource;
 
-    enum State {
-        StateVoidPending = 0,
-        StateNull = 1,
-        StateReady = 2,
-        StatePaused = 3,
-        StatePlaying = 4
-    };
     virtual void report(json::value *obj,WorkObject::ReportType type)const;
-    virtual bool open( std::string const& _pipeline );
+    virtual bool open( std::string const& _pipeline);
+    string const& getName()const{return name;}
 protected:
     void stateChange(GstState state);
     virtual void close();
@@ -124,6 +129,7 @@ protected:
     GStreamer *gstreamer;
     GstElement *pipeline;
     GstElement *element;
+    std::string name;
     std::string pipestr;
     guint64 frames = 0;
     GstCaps*      caps;
@@ -144,19 +150,19 @@ class GStreamerSrc :
         public GStreamerPipe
 {
 public:
-    GStreamerSrc(GStreamer *gst);
+    GStreamerSrc(GStreamer *gst,string const& name);
     bool grabFrame();
     virtual bool open(std::string const& _pipeline);
-    gint getWidth(){ return width; }
-    gint getHeight(){ return height; }
-protected:
+    gint getWidth()const{ return width; }
+    gint getHeight()const{ return height; }
+
     friend class GStreamer;
     friend class GStreamerSink;
     friend class GStreamerStreamFiler;
     friend class Sources::GStreamerSampleSource;
 
     virtual void          eos          (){}
-    virtual GstFlowReturn new_preroll  (){}
+    virtual GstFlowReturn new_preroll  (){ return GST_FLOW_EOS; }
     virtual GstFlowReturn new_sample   ();
 protected:
     bool stopped = true;
@@ -179,17 +185,17 @@ class GStreamerSink :
         public GStreamerPipe
 {
 public:
-    GStreamerSink(GStreamer *gst);
+    GStreamerSink(GStreamer *gst,string const &name);
 
     virtual bool open( std::string const& filename );
     virtual void close();
     virtual void stop();
     friend class GStreamerStreamSource;
 
-    virtual void need_data(guint32 length){}
+    virtual void need_data(guint32){}
     virtual void enough_data(){}
-    virtual gboolean seek_data(guint64 offset){}
-    virtual void nextSample(GStreamerSrc *that,GstSample *sample){}
+    virtual gboolean seek_data(guint64){ return false; }
+    virtual void nextSample(GStreamerSrc *,GstSample *){}
 protected:
     const char* filenameToMimetype(const char* filename);
     GstAppSrcCallbacks callbacks;
@@ -199,18 +205,16 @@ protected:
 class GStreamerStreamSource : public GStreamerSink
 {
 public:
-    GStreamerStreamSource(GStreamer *gst);
+    GStreamerStreamSource(GStreamer *gst,string const& name);
     void start();
     void stop();
     void report(json::value *obj,WorkObject::ReportType type)const;
     void args(Relevance::arguments_type const& args);
     bool open(std::string const& filename);
-    virtual void need_data(guint32 length)=0;
-    virtual void enough_data()=0;
+    virtual void need_data(guint32 );
+    virtual void enough_data();
     guint64 getTick()const{ return tick; }
-    string getFilePath()const{ return filepath; }
-    virtual void writeFrame(GObject*);
-protected:
+    virtual void writeFrame(GstSample*);
     virtual void nextSample(GStreamerSrc *that,GstSample *sample);
 public:
     bool going = false;
@@ -228,29 +232,27 @@ class GStreamer :
     public ThreadWorker
 {
 public:
-    typedef map<GStreamerSrc*,GStreamerSink*> connection_type;
+    typedef map<GStreamerSrc*,Sources::GStreamerSourceBase*> connection_type;
     bool isDeleting()const{return deleting;}
-    GStreamer(Thread *_thread):
-        ThreadWorker(_thread)
+    GStreamer(drumlin::Thread *_thread):
+        ThreadWorker(ThreadType_gstreamer,_thread)
     {
-        type = gstreamer;
     }
     virtual ~GStreamer() {
         deleting = true;
-        lock_guard l2(&getThread()->critical_section);
+        lock_guard<mutex> l(getThread()->critical_section);
         connections.clear();
         for(jobs_type::value_type const& obj : jobs){
             obj.second->stop();
         }
         jobs.removeAll();
     }
-    bool event(QEvent *event);
+    bool event(Event *event);
     virtual void shutdown();
     void getStatus(json::value *status)const;
 
-    GStreamerSrc *addPipeline(string const& pipeline,string const& name,guint32 maxSampleSize);
-    GStreamerSink *addStream(Relevance::arguments_type const& args,string const& pipeline,string const& name);
-    void run(QObject *obj,Event *event);
+    Sources::GStreamerSampleSource *addPipeline(string const& pipeline,string const& name,guint32 maxSampleSize);
+    Sources::GStreamerOffsetSource *addStream(Relevance::arguments_type const& args,string const& pipeline,string const& name);
     void nextSample(GStreamerSrc *that,GstSample *sample);
 private:
     connection_type connections;
@@ -259,6 +261,8 @@ private:
 
 typedef std::pair<Sources::GStreamerSampleSource*,int> source_port_pair;
 
-}
+} // namespace GStreamer
+
+} // namespace Pleg
 
 #endif // GSTREAMER_H

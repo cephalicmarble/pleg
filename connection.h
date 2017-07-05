@@ -12,57 +12,54 @@ namespace drumlin {
 
 extern boost::asio::io_service io_service;
 
-template <class Endpoint = asio::ip::tcp::endpoint,class Socket = asio::ip::tcp::socket>
+template <class Protocol = asio::ip::tcp>
 class AsioClient
 {
 public:
+    typedef typename Protocol::endpoint Endpoint;
+    typedef typename Protocol::socket Socket;
     AsioClient(boost::asio::io_service& io_service,string host,int port)
+        :m_endpoint(asio::ip::address::from_string(host),port),
+         m_socket(io_service)
     {
-        m_endpoint = Endpoint(asio::ip::address::from_string(host),port);
-        m_socket = Socket(io_service);
         m_socket.connect(m_endpoint);
     }
-    Endpoint &m_endpoint;
-    Socket &m_socket;
+    Endpoint m_endpoint;
+    Socket m_socket;
     void disconnect()
     {
         m_socket.close();
     }
 };
 
-template <class FullType,class SockType = asio::ip::tcp::socket>
+template <class Protocol = asio::ip::tcp>
 class Connection
-  : public boost::enable_shared_from_this<Connection>
+  : public boost::enable_shared_from_this<Connection<Protocol>>
 {
 public:
-    typedef Socket<SockType> socket_type;
+    typedef drumlin::Socket<Protocol> socket_type;
 
-    static pointer create()
-    {
-        return pointer(new FullType());
-    }
-
-    socket_type& socket()
+    socket_type & socket()
     {
         return m_socket;
     }
 
     virtual void connection_start()=0;
 
-private:
     Connection()
         : m_socket(io_service)
     {
     }
     ~Connection()
     {
-        m_socket.close();
+        Critical() << "used to call socket.close()";
     }
+private:
     socket_type m_socket;
 };
 
 template <
-        class Connection = Connection<typename Protocol::socket>,
+        class Connection,
         class Address = asio::ip::address_v4,
         class Protocol = asio::ip::tcp>
 class AsioServer
@@ -74,29 +71,30 @@ public:
     typedef typename Protocol::socket socket_type;
     typedef typename Protocol::acceptor acceptor_type;
     typedef typename Protocol::resolver resolver_type;
-    typedef AsioServer<connection_type,address_type,endpoint_type,socket_type,acceptor_type> server_type;
-    AsioServer(int port)
+    typedef AsioServer<connection_type,address_type,Protocol> server_type;
+    AsioServer(int port):addr(),m_endpoint(addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
     {
-        m_endpoint = Endpoint(Address.any(),port);
-        m_acceptor = Acceptor(Pleg::io_service,m_endpoint);
     }
     void start()
     {
         m_acceptor.listen(10);
-        typename connection_type::pointer new_connection = connection_type::create();
-        m_acceptor.async_accept(new_connection->socket(),
+        connection_type *new_connection = new connection_type(dynamic_cast<Pleg::Server*>(this));
+        m_acceptor.async_accept(new_connection->socket().socket(),
             boost::bind(&server_type::handle_accept, this, new_connection, boost::asio::placeholders::error));
     }
-    virtual void handle_accept(typename connection_type::pointer new_connection,const boost::system::error_code &error)
+    virtual void handle_accept(connection_type *new_connection,const boost::system::error_code &error)
     {
         if(!error)
         {
             new_connection->connection_start();
-            start();
+        }else{
+            delete new_connection;
         }
+        start();
     }
-    endpoint_type &m_endpoint;
-    acceptor_type &m_acceptor;
+    address_type addr;
+    endpoint_type m_endpoint;
+    acceptor_type m_acceptor;
     void stop()
     {
         m_acceptor.close();

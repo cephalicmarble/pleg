@@ -1,10 +1,14 @@
 #include <pleg.h>
 using namespace Pleg;
-#include "signalhandler.h"
 #include <assert.h>
+#include <boost/lexical_cast.hpp>
+using namespace boost;
+#include "signalhandler.h"
 #include "cursor.h"
 #include "event.h"
 #include "server.h"
+#include "application.h"
+using namespace drumlin;
 
 #ifndef _WIN32
 
@@ -16,6 +20,8 @@ using namespace Pleg;
 #include <set>
 
 #endif //!_WIN32
+
+namespace drumlin {
 
 // There can be only ONE SignalHandler per process
 SignalHandler* g_handler(NULL);
@@ -85,7 +91,7 @@ bool SignalHandler::handleSignal(int signal)
     if(Tracer::tracer!=nullptr){
         Tracer::endTrace();
     }
-    QCoreApplication::instance()->postEvent(QCoreApplication::instance(),new QSEvent(QSEvent::Type::ApplicationShutdown),Qt::HighEventPriority);
+    make_event(Event::Type::ApplicationShutdown,lexical_cast<string>(signal).c_str(),(Object*)(gint64)signal)->punt();
     return true;
 }
 
@@ -183,3 +189,5 @@ void POSIX_handleFunc(int signal)
     }
 }
 #endif //_WIN32
+
+} // namespace drumlin

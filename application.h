@@ -18,10 +18,18 @@ typedef std::vector<Thread*> threads_type;
 
 class Terminator;
 
+class IApplication
+{
+public:
+    virtual void post(Event *event)=0;
+    thread::id getThreadId(){ return this_thread::get_id(); }
+};
+
 template <class DrumlinApplication = Object>
 class Application :
         public DrumlinApplication,
-        public SignalHandler
+        public SignalHandler,
+        public IApplication
 {
 public:
     typedef DrumlinApplication Base;
@@ -31,20 +39,19 @@ public:
     Application(int &argc,char **argv);
     ~Application();
 
-    mutex thread_critical_section;
+    static mutex thread_critical_section;
 
-    void addThread(Thread *thread,bool start = false);
+    void addThread(Thread *thread);
     threads_type findThread(const string &name,ThreadWorker::Type type);
     threads_type getThreads(ThreadWorker::Type type);
     void removeThread(Thread *thread,bool noDelete = false);
 
     void post(Event *event);
-    void exec();
+    int exec();
     bool event(Event *e);
     virtual void stop();
-    void wait();
-
-    Thread *shutdown(bool restarting = false);
+    void quit();
+    void shutdown(bool restarting = false);
     virtual void getStatus(json::value *status)const;
     bool handleSignal(int signal);
 protected:
@@ -52,7 +59,7 @@ protected:
 private:
     bool terminated = false;
     std::unique_ptr<threads_reg_type> threads;
-    boost::thread::sync_queue<Event*> m_queue;
+    boost::concurrent::sync_queue<Event*> m_queue;
 };
 
 class Terminator
@@ -64,6 +71,8 @@ public:
 private:
     thread m_thread;
 };
+
+extern IApplication *iapp;
 
 } // namespace drumlin
 

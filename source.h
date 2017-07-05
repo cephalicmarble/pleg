@@ -17,21 +17,24 @@ using namespace boost;
 #include "buffer.h"
 #include "registry.h"
 using namespace drumlin;
-using namespace Pleg;
 
-class Request;
-//class BluetoothLEDevice;
 #include "gstreamer.h"
 
 #define SourceTypes (\
-    HeartRate,\
-    BatteryLevel,\
-    Mock,\
-    Null,\
-    Gstreamer,\
-    Offset\
+    Source_HeartRate,\
+    Source_BatteryLevel,\
+    Source_Mock,\
+    Source_Null,\
+    Source_Gstreamer,\
+    Source_Offset\
 )
 ENUM(SourceType,SourceTypes)
+
+namespace Pleg {
+
+    class Request;
+    class Response;
+    //class BluetoothLEDevice;
 
 namespace Sources {
 
@@ -39,8 +42,7 @@ namespace Sources {
  * @brief The Source class : represents an abstract data source
  */
 class Source :
-    public Object,
-    public WorkObject
+    public Object
 {
 public:
     typedef SourceType Type;
@@ -48,7 +50,6 @@ public:
     Source(std::string const& _name):Object(),name(_name){}
     Source():Object(),name("source"){}
     virtual ~Source();
-    virtual void stop(){}
     virtual guint64 nextTick(){
         return ++tick;
     }
@@ -60,7 +61,7 @@ public:
      * @param bytes void*
      * @param len quint32
      */
-    virtual void writeNext(void *bytes, quint32 len){}
+    virtual void writeNext(void *, guint32){}
     virtual void writeNext();
     virtual guint32 lengthData(){ return 0; }
     virtual guint32 getTTL(){ return 2000; }
@@ -72,16 +73,23 @@ public:
     virtual uuids::uuid getUuid(){ return uuids::uuid(); }
 
     operator const char*()const{ return name.c_str(); }
-    virtual void report(json::value *obj,ReportType type)const;
 
     virtual void writeToFile(Request *,string rpath);
 
     Type type;
     bool deleting = false;
-private:
+protected:
     guint64 tick = 0;
-    size_t memory;
     string name;
+    guint64 memory;
+};
+
+class WorkSource : public Source, public WorkObject
+{
+public:
+    WorkSource(string const& _name):Source(_name){}
+    virtual void stop(){}
+    virtual void report(json::value *obj,ReportType type)const;
 };
 
 /**
@@ -109,7 +117,7 @@ public:
     virtual void writeNextValue(const byte_array &value, const uuids::uuid &_uuid)
     {
         uuid = _uuid;
-        memcpy((void*)data,(void*)value.data(),len = qMin((guint32)value.length(),maxlen));
+        memcpy((void*)data,(void*)value.data(),len = std::min((guint32)value.length(),maxlen));
     }
 
     /**
@@ -132,7 +140,7 @@ public:
      * @param len guint32
      * @return guint32
      */
-    virtual guint32 read(void *buf,guint32 len)
+    virtual guint32 read(void *buf,guint32)
     {
         if(!lengthData())
             return 0;
@@ -146,7 +154,7 @@ public:
      */
     virtual uuids::uuid getUuid(){ return uuid; }
 
-    virtual size_t getAlign(){ return alignof(data); }
+    virtual size_t getAlign(){ return alignof(guint8); }
 
     /**
      * @brief operator const char *
@@ -197,7 +205,7 @@ public:
         memcpy(getData()->data,bytes,len);
         buf->getRelevance()->setSource(this);
         buf->TTL(getTTL());
-        Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
+        Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
     }
 
     /**
@@ -208,6 +216,8 @@ public:
 
     virtual size_t getAlign(){ return alignof(T); }
 };
+
+#define REGISTRYLOCK lock_guard<recursive_mutex> l(mutex);
 
 class SourceRegistry :
     public Registry<Source>
@@ -220,7 +230,7 @@ public:
      */
     void add(const string &str,Source *src)
     {
-        lock_guard l(&mutex);
+        REGISTRYLOCK;
         src->setMemory(Allocator(CPS_call_void(Buffers::registerSource,src)));
         Registry<Source>::add(str,src);
     }
@@ -231,7 +241,7 @@ public:
      */
     void remove(const string &str)
     {
-        lock_guard l(&mutex);
+        REGISTRYLOCK;
         Allocator(CPS_call_void(Buffers::unregisterSource,map->at(str)));
         Registry<Source>::remove(str);
     }
@@ -242,7 +252,7 @@ public:
      */
     void removeAll()
     {
-        lock_guard l(&mutex);
+        REGISTRYLOCK;
         Allocator(CPS_call_void(Buffers::unregisterSources,0));
         Registry<Source>::removeAll();
     }
@@ -261,7 +271,8 @@ void getStatus(json::value *status);
  * @brief The MockSource class : enumerates the alphabet into a buffer
  */
 class MockSource :
-    public BufferedSource<32>
+    public BufferedSource<32>,
+    public WorkObject
 {
     typedef BufferedSource<32> Base;
 public:
@@ -278,24 +289,25 @@ private:
 /**
  * @brief The NullSource class : does nothing.
  */
-class NullSource : public Source
+class NullSource : public Source,
+        public WorkObject
 {
 public:
-    NullSource():Source("null"){ type = Null; }
+    NullSource():Source("null"){ type = Source_Null; }
     virtual guint32 lengthData(){ return 0; }
     virtual void writeNext(void *buf,guint32 len);
     void stop(){}
 };
 
-class GStreamerSourceBase : public Source
+class GStreamerSourceBase : public WorkSource
 {
 public:
-    GStreamerSourceBase(std::string const& _name):Source(_name){}
+    GStreamerSourceBase(std::string const& _name):WorkSource(_name){}
+    virtual void writeNextSample(GstSample *sample)=0;
 };
 
 class GStreamerSampleSource :
-    public GStreamerSourceBase,
-    public GStreamer::GStreamerSrc
+    public GStreamerSourceBase
 {
 public:
     GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize);
@@ -306,19 +318,19 @@ public:
     virtual guint32 sizeT();
     virtual uuids::uuid getUuid();
     void writeToFile(Request *,string rpath);
+    void writeNext(void *mem,guint32 len);
+    GStreamer::GStreamerSrc const& getSrc()const{ return src; }
+protected:
+    void writeNextSample(GstSample *sample);
+    GStreamer::GStreamerSrc src;
+    guint32 m_maxSampleSize;
+    json::value *meta;
     friend class GStreamer::GStreamerStreamSource;
     friend class GStreamer::GStreamer;
-protected:
-    void writeNext(void *mem,guint32 len);
-    void writeNextSample(GObject *sample);
-private:
-    guint32 m_maxSampleSize;
-    json::value &meta;
 };
 
 class GStreamerOffsetSource :
-    public GStreamerSourceBase,
-    public GStreamer::GStreamerStreamSource
+    public GStreamerSourceBase
 {
 public:
     GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name);
@@ -328,13 +340,17 @@ public:
     virtual size_t getAlign();
     virtual guint32 sizeT();
     virtual uuids::uuid getUuid();
+    void writeNext(void *mem,guint32 len);
+    GStreamer::GStreamerStreamSource const& getSrc()const{ return src; }
+protected:
+    virtual void writeNextSample(GstSample *sample);
+    GStreamer::GStreamerStreamSource src;
     friend class GStreamer::GStreamerStreamSource;
     friend class GStreamer::GStreamer;
-    void writeNext(void *mem,guint32 len);
-protected:
-    virtual void writeNextSample(GObject *sample);
 };
 
-}
+} // namespace Sources
+
+} // namespace Pleg
 
 #endif // SOURCE_H

@@ -4,8 +4,11 @@ using namespace Pleg;
 using namespace tao;
 #include "buffer.h"
 #include "source.h"
+#include "byte_array.h"
 #include <unistd.h>
 using namespace boost;
+
+namespace Pleg {
 
 namespace Buffers {
 
@@ -61,7 +64,7 @@ SourceBuffer::SourceBuffer(Sources::Source *_source):source(_source)
         m_len = 0;
         m_data = nullptr;
     }else{
-        Allocator(CPS_call_void(Buffers::alloc,this));
+        Pleg::Allocator(CPS_call_void(Buffers::alloc,this));
     }
 }
 
@@ -71,7 +74,13 @@ SourceBuffer::SourceBuffer(Sources::Source *_source):source(_source)
 SourceBuffer::~SourceBuffer()
 {
     if(m_data)
-        Allocator(CPS_call_void(Buffers::free,this));
+        Pleg::Allocator(CPS_call_void(Buffers::free,this));
+}
+
+posix_time::ptime Buffer::advanceClock()
+{
+    timestamp += posix_time::milliseconds(ttl);
+    return timestamp;
 }
 
 /**
@@ -79,23 +88,23 @@ SourceBuffer::~SourceBuffer()
  */
 bool Buffer::isDead()const
 {
-    return timestamp.addMSecs(ttl) <= posix_time::microsec_clock::universal_time();
+    return timestamp <= posix_time::microsec_clock::universal_time();
 }
 
 /**
  * @brief Buffer::operator byte_array
  */
-Buffer::operator ByteArray()const
+Buffer::operator byte_array()const
 {
-    return ByteArray::fromRawData(data<char>(),length());
+    return byte_array::fromRawData(m_data,m_len);
 }
 
 /**
- * @brief Buffer::operator tring
+ * @brief Buffer::operator string
  */
 Buffer::operator string()const
 {
-    return string(data<QChar>(),(int)length());
+    return string(data<char>(),(int)length());
 }
 
 /**
@@ -151,7 +160,7 @@ char *heap_t::alloc()
         return (*it).second;
     }else{
         if(std::distance(blocks.begin(),blocks.end()) >= total){
-            qCritical() << "*****************Heap exhausted!*****************";
+            Critical() << "*****************Heap exhausted!*****************";
             return nullptr;
         }
         ptr = alptr;
@@ -167,9 +176,9 @@ char *heap_t::alloc()
         if(alptr){
             blocks.push_back({ ptr, alptr });
 #ifdef DEBUGHEAP
-            qDebug() << "ALLOCATED" << (void*)ptr << ":" << (void*)alptr;
+            Debug() << "ALLOCATED" << (void*)ptr << ":" << (void*)alptr;
             for(array_t::value_type &pair : blocks){
-                qDebug() << (void*)pair.first << ":" << (void*)pair.second;
+                Debug() << (void*)pair.first << ":" << (void*)pair.second;
             }
 #endif
             return alptr;
@@ -178,7 +187,7 @@ char *heap_t::alloc()
         }
         ptr += (int)size;
     }while(allocated<total);
-    qCritical() << "*****************Heap misaligned!*****************";
+    Critical() << "*****************Heap misaligned!*****************";
     return nullptr;
 }
 
@@ -208,7 +217,7 @@ void heap_t::free(char *block)
             qDebug() << (void*)pair.first << ":" << (void*)pair.second;
         }
 #endif
-        qCritical() << "*****************Double free?*****************";
+        Critical() << "*****************Double free?*****************";
 
     }
     allocated--;
@@ -256,7 +265,7 @@ int Allocator::getStatus(json::value *status)
  */
 Allocator::~Allocator()
 {
-    lock_guard l(&mutex);
+    lock_guard<recursive_mutex> l(mutex);
 }
 
 /**
@@ -322,6 +331,16 @@ int Allocator::unregisterSources(int)
 }
 
 /**
+ * @brief Allocator::unregisterSource : *DANGEROUS* fetch the heap
+ * @param source Sources::Source*
+ * @return int
+ */
+const heap_t *Allocator::getHeap(const Sources::Source *source)
+{
+    return heaps.at(const_cast<Sources::Source*>(source));
+}
+
+/**
  * @brief Allocator::alloc : allocate a chunk from the source's heap
  * @param source Sources::Source*
  * @return void*
@@ -332,7 +351,7 @@ void *Allocator::alloc(Buffers::SourceBuffer *buffer)
         return nullptr;
     heap_t *h(heaps.at(buffer->source));
     if(h->allocated >= h->total){
-        qCritical() << "******************Overallocated!******************";
+        Critical() << "******************Overallocated!******************";
         return nullptr;
     }
     buffer->m_len = h->size;
@@ -357,11 +376,12 @@ int Allocator::free(Buffers::SourceBuffer *buffer)
 registerSource_t registerSource(&Allocator::registerSource);
 unregisterSource_t unregisterSource(&Allocator::unregisterSource);
 unregisterSources_t unregisterSources(&Allocator::unregisterSources);
+getHeap_t getHeap(&Allocator::getHeap);
 alloc_t alloc(&Allocator::alloc);
 free_t free(&Allocator::free);
 getAllocatorStatus_t getAllocatorStatus(&Allocator::getStatus);
 
-Allocator allocator;
+Pleg::Buffers::Allocator allocator;
 
 /**
  * @brief BufferCache::BufferCache : only constructor
@@ -375,7 +395,7 @@ BufferCache::BufferCache()
  */
 BufferCache::~BufferCache()
 {
-    lock_guard l(&m_mutex);
+    lock_guard<mutex> l(m_mutex);
 }
 
 /**
@@ -399,7 +419,7 @@ bool BufferCache::isLocked()
 guint32 BufferCache::addBuffer(const Buffer *buffer)
 {
 #ifdef DEBUGCACHE
-    qDebug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << buffer->getTimestampRef().toString() << buffer->operator string();
+    Debug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << buffer->getTimestampRef().toString() << buffer->operator string();
 #endif
     Buffer *buf(const_cast<Buffer*>(buffer));
     buffers.push_front(buffers_type::value_type(buf));
@@ -426,6 +446,7 @@ guint32 BufferCache::flushDeadBuffers()
 {
     guint32 c(0);
     buffers.erase(std::remove_if(buffers.begin(),buffers.end(),[this,&c](buffers_type::value_type &buffer){
+        buffer->advanceClock();
         if(buffer->isDead()){
             callSubscribed(buffer.get(),true);
             c++;
@@ -579,4 +600,6 @@ registerRelevance_t registerRelevance(&BufferCache::registerRelevance);
 unregisterAcceptor_t unregisterAcceptor(&BufferCache::unregisterAcceptor);
 getCacheStatus_t getCacheStatus(&BufferCache::getStatus);
 
-}
+} // namespace Buffers
+
+} // namespace Pleg

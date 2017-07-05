@@ -27,10 +27,9 @@ using namespace Pleg;
 #define defFactory(Factory,Class,Parent,Container) \
 namespace Factory { \
     Class *create##Class(Parent *parent){ \
-        lock_guard l(&factory_mutex); \
+        lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
         Thread *thread(new Thread(#Class)); \
         Class *obj(new Class(thread,parent)); \
-        obj->connectSlots(); \
         Container.push_back(obj); \
         return obj; \
     }\
@@ -38,9 +37,9 @@ namespace Factory { \
 /*
  * define a factory function forward declaration
  */
-#define defFactoryHeader(Factory,Class,Parent) \
+#define defFactoryHeader(ns,Factory,Class,Parent) \
 namespace Factory { \
-    Class *create##Class(Parent *parent); \
+    ns::Class *create##Class(Parent *parent); \
 }
 /*
  * define a removal function to delete an instance
@@ -49,7 +48,7 @@ namespace Factory { \
 #define defRemove(Factory,Class,Container) \
 namespace Factory { \
     void remove(Class *transform){ \
-        lock_guard l(&factory_mutex); \
+        lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
         Container.remove(transform); \
         delete transform; \
     }\
@@ -57,26 +56,27 @@ namespace Factory { \
 /*
  * define a removal function
  */
-#define defRemoveHeader(Factory,Class) \
+#define defRemoveHeader(ns,Factory,Class) \
 namespace Factory { \
-    void remove(Class *transform); \
+    void remove(ns::Class *transform); \
 }
 
-namespace Factory{
+namespace Pleg {
     using namespace Transforms;
 
-    /**
-     * @brief transforms_type : the type of the factory container
-     */
     typedef std::list<Transforms::Transform*> transforms_type;
 
-    defRemoveHeader(Transform,Passthrough)
-    defFactoryHeader(Transform,Passthrough,Response)
+    extern recursive_mutex factory_mutex;
 
+    extern transforms_type transforms;
+}
+
+defRemoveHeader(Pleg::Transforms,Transform,Passthrough)
+defFactoryHeader(Pleg::Transforms,Transform,Passthrough,Response)
+
+namespace Factory{
     namespace Response {
-
-        Response *create(Request *that);
-
+        Pleg::Response *create(Pleg::Request *that);
     }
 }
 

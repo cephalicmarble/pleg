@@ -32,6 +32,7 @@ public:
      * @param _req Request*
      */
     Response(Request *_req) : Object(),req(_req){}
+    Response() : Object(),req(nullptr){}
     /**
      * @brief getRequest
      * @return Request*
@@ -58,7 +59,7 @@ public:
     virtual void writeResponse();
     virtual void getStatus(json::value *status)const;
 public:
-    vector<string> headers;
+    string_list headers;
 protected:
     Request *req;
     ThreadWorker *worker;
@@ -70,16 +71,20 @@ class Options :
     public Response
 {
 public:
+    Options():Response(){}
     Options(Request *req);
     void service();
+    static verbs_type method(){ return OPTIONS; }
 };
 
 class Head :
     public Response
 {
 public:
+    Head():Response(){}
     Head(Request *req);
     void service();
+    static verbs_type method(){ return HEAD; }
 };
 
 /**
@@ -90,6 +95,7 @@ class Get :
     public Continuer<Buffers::findRelevant_t>
 {
 public:
+    Get():Response(){}
     Get(Request *req);
     virtual void service();
     virtual ~Get() {}
@@ -101,6 +107,7 @@ public:
     void _file();
     void _lsof();
     void catchall(){ _file(); }
+    static verbs_type method(){ return GET; }
 private:
     Buffers::buffer_vec_type data;
     string boundary = "--";
@@ -110,8 +117,8 @@ private:
  * @brief The Post class : HTTP POST
  */
 class Post : public Response {
-    Q_OBJECT
 public:
+    Post():Response(){}
     Post(Request *req);
     virtual void service();
     virtual ~Post() {}
@@ -121,17 +128,15 @@ public:
     void makeWriterFile();
     void stopWriterFile();
     void teeSourcePort();
+    static verbs_type method(){ return POST; }
 };
-
-class Thread;
 
 /**
  * @brief The Patch class : HTTP PATCH
  */
 class Patch : public Response {
-    Q_OBJECT
-
 public:
+    Patch():Response(){}
     Patch(Request *req);
     virtual void service();
     virtual ~Patch() {}
@@ -149,19 +154,21 @@ public:
     void _shutdown();
     void _restart();
     void _removeSource();
-public slots:
     void timedOut();
     void writeToSocket();
+    static verbs_type method(){ return PATCH; }
 };
 
-class Dummy : public Response
+class Catch : public Response
 {
 public:
-    Dummy(Request *req):Response(req){}
+    Catch():Response(){}
+    Catch(Request *req):Response(req){}
     virtual void service();
     void catchall();
+    static verbs_type method(){ return CATCH; }
 };
 
-} // namespace drumlin
+} // namespace Pleg
 
 #endif // RESPONSE_H

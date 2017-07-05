@@ -1,8 +1,6 @@
 #ifndef JSONCONFIG_H
 #define JSONCONFIG_H
 
-#include "object.h"
-using namespace drumlin;
 #include <sstream>
 #include <iostream>
 #include <list>
@@ -11,11 +9,14 @@ using namespace drumlin;
 using namespace std;
 #include "tao_forward.h"
 using namespace tao;
+#include "object.h"
+#include "socket.h"
+#include "request.h"
+using namespace drumlin;
 
 //#include <QBluetoothDeviceInfo>
 //class BluetoothLEDevice;
 //class LowEnergySource;
-class Socket;
 
 namespace Config {
 
@@ -51,12 +52,12 @@ public:
     void from(string const& _json);
     void load(string const& path);
     void load(istream &device);
-    void save(Socket *device);
+    void save(Pleg::Request *request);
     void save(ostream &device);
     void save(string const& path);
-signals:
-    void beforeSave(json::value *json);
-    void afterLoad(json::value *json);
+
+    void (*beforeSave)(json::value *json) = nullptr;
+    void (*afterLoad)(json::value *json) = nullptr;
 
 public:
     friend ostream &operator<<(ostream &stream,const JsonConfig &rel);

@@ -4,6 +4,8 @@ using namespace Pleg;
 #include <functional>
 #include "response.h"
 
+namespace Pleg {
+
 namespace Transforms {
 
 /**
@@ -15,11 +17,11 @@ void Transform::error(const char*string)
     (new Event(Event::Type::TransformError,string))->punt();
 }
 
-void Passthrough::run(QObject *obj,Event *event)
+void Passthrough::run(Object *,Event *)
 {
     Debug() << "!!foobar";
     auto sub(Buffers::make_sub(getResponse()->getRequest()->getRelevanceRef(),(Acceptor*)this));
-    auto relevant(Buffers::Cache(CPS_call_void(Buffers::registerRelevance,sub)));
+    auto relevant(Pleg::Cache(CPS_call_void(Buffers::registerRelevance,sub)));
     for(auto buffer : relevant){
         if(nullptr != buffer)
             accept(buffer);
@@ -34,9 +36,11 @@ void Passthrough::accept(const Buffers::Buffer *buffer)
     }while(*(++p));
 }
 
-void Passthrough::flush(const Buffers::Buffer *buffer)
+void Passthrough::flush(const Buffers::Buffer *)
 {
 
 }
 
-}
+} // namespace Transforms
+
+} // namespace Pleg

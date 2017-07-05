@@ -12,8 +12,10 @@ using namespace tao;
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <queue>
 #include <boost/regex.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
 using namespace boost;
 #include "thread.h"
 #include "event.h"
@@ -31,6 +33,8 @@ using namespace tao;
 using namespace std;
 
 namespace drumlin {
+
+namespace Tracer {
 
 const char *Tracer::EndOfTrace = "\n\n\n";
 
@@ -201,15 +205,15 @@ void Tracer::addBlock(string block)
 {
 //    quint32 clock(lines.front().toDouble());
 //    lines.pop_front(); //clock
-    vector<string> lines;
-    algorithm::split(lines,block,is_any_of("\n"),algorithm::token_compress_on);
+    list<string> lines;
+    algorithm::split(lines,block,algorithm::is_any_of("\n"),algorithm::token_compress_on);
     string line;
     json::value callchain(json::empty_array);
     while((line = lines.front())!=""){
         lines.pop_front();
-        regex rx("0x[0-9a-f]+: \\(([^ ]+ )?(([^:]+::)+[^\\(]+)\\([^\\)]+\\)\\+0x[0-9a-f]+\\)",boost::regex::icase);
-        cmatch cap;
-        if(!regex_match(line,cap,rx))
+        boost::regex rx("0x[0-9a-f]+: \\(([^ ]+ )?(([^:]+::)+[^\\(]+)\\([^\\)]+\\)\\+0x[0-9a-f]+\\)",boost::regex::icase);
+        boost::smatch cap;
+        if(!boost::regex_match(line,cap,rx))
             continue;
         string name(cap[cap.length()-1]);
         auto _roll = roll->get_array();
@@ -243,5 +247,7 @@ void Tracer::write()
     std::ostream &file(*out);
     file << "{\"version\":0,\"costs\":[{\"description\":\"elapsed\"},{\"unit\":\"ns\"}],\"functions\":" << json::to_string(*roll) << ",\"events\":" << json::to_string(*chain) << "}";
 }
+
+} // namespace Tracer
 
 } // namespace drumlin

@@ -12,7 +12,7 @@ using namespace boost;
 #include "object.h"
 #include "relevance.h"
 #include "buffer.h"
-#include "files.h"
+#include "format.h"
 using namespace drumlin;
 
 //namespace drumlin {
@@ -40,15 +40,12 @@ public:
      * @param buffer Buffers::Buffer*
      */
     virtual void write(const Buffers::Buffer *buffer)=0;
-    virtual void write(const byte_array *bytes)=0;
+    virtual void write(byte_array const& bytes)=0;
 
     json::value *getJsonObject(const Buffers::Buffer *buffer);
     void writeJson(const Buffers::Buffer *buffer);
     void writeJson(const Buffers::buffer_vec_type buffers);
-    void writeMetaJson(const tring &source);
-signals:
-
-public slots:
+    void writeMetaJson(const string &source);
     void writeBuffer(const Buffers::Buffer*);
 };
 
@@ -67,7 +64,7 @@ public:
     explicit ResponseWriter(Response *parent):Writer((Object*)parent){}
 public:
     virtual void write(const Buffers::Buffer *buffer);
-    virtual void write(const byte_array *bytes);
+    virtual void write(byte_array const& bytes);
 };
 
 class FileWriter :
@@ -76,35 +73,34 @@ class FileWriter :
 {
     explicit FileWriter(string const& filename);
 public:    
-    Format format;
-    tring getFilePath()const{return filePath;}
-    QFile &getFile(){return file;}
+    Pleg::Files::Format format;
+    string getFilePath()const{return filePath;}
     void write(const Buffers::Buffer *buffer);
-    void write(const byte_array *bytes);
+    void write(byte_array const& bytes);
     void getStatus(json::value *status);
 
     void accept(const Buffers::Buffer *buffer);
     void flush(const Buffers::Buffer *buffer);
 
-    friend class Files;
+    friend class Files::Files;
     friend void Files::getStatus(json::value *status);
     /**
      * @brief setDevice
      * @param _device ofstream
      */
-    void setDevice(ofstream &&_device){
+    void setDevice(std::ofstream &&_device){
         device = std::move(_device);
     }
     /**
      * @brief getDevice
      * @return ofstream
      */
-    ofstream &getDevice(){
+    std::ofstream &getDevice(){
         return device;
     }
 private:
-    ofstream &device;
     string filePath;
+    std::ofstream device;
     posix_time::ptime current;
 };
 
@@ -134,6 +130,6 @@ private:
 //    Socket *m_socket;
 //};
 
-extern Files files;
+} // namespace Pleg
 
 #endif // WRITER_H

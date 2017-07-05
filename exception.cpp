@@ -4,17 +4,17 @@ using namespace Pleg;
 
 namespace drumlin {
 
-Exception::Exception() : std::exception()
+Exception::Exception() : exception()
 {
     message = "Unknown Exception";
 }
 
-Exception::Exception(const Exception &rhs) : std::exception()
+Exception::Exception(const Exception &rhs) : exception()
 {
     message = rhs.message;
 }
 
-Exception::Exception(const string &str) : std::exception()
+Exception::Exception(const string &str) : exception()
 {
     message = str;
 }

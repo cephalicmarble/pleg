@@ -3,13 +3,14 @@ using namespace Pleg;
 #include <tao/json.hpp>
 using namespace tao;
 #include <boost/thread/lock_guard.hpp>
-
-#include "application.h"
-
 #include <boost/thread/mutex.hpp>
+#include <boost/thread.hpp>
+using namespace boost;
+#include "application.h"
 #include "thread.h"
 #include "event.h"
 #include "cursor.h"
+
 
 namespace drumlin {
 
@@ -33,7 +34,7 @@ Application<T>::~Application()
 {
 }
 
-#define THREADSLOCK lock_guard l(&thread_critical_section);
+#define THREADSLOCK lock_guard<mutex> l(thread_critical_section);
 
 /**
  * @brief Application<T>::addThread : optionally start a thread as it is added
@@ -41,14 +42,11 @@ Application<T>::~Application()
  * @param start bool
  */
 template <class T>
-void Application<T>::addThread(Thread *thread,bool start)
+void Application<T>::addThread(Thread *thread)
 {
     THREADSLOCK
-    qDebug() << __func__ << thread->getTask() << *thread;
+    Debug() << __func__ << thread->getTask() << *thread;
     threads->add(thread->getTask(),thread->getWorker());
-    if(start){
-        thread->start();
-    }
 }
 
 /**
@@ -58,7 +56,7 @@ void Application<T>::addThread(Thread *thread,bool start)
  * @return std::vector<Thread*>
  */
 template <class T>
-threads_type Application<T>::findThread(const string &name,ThreadWorker::ThreadType type)
+threads_type Application<T>::findThread(const string &name,ThreadType type)
 {
     THREADSLOCK
     threads_type _threads;
@@ -77,7 +75,7 @@ template <class T>
 void Application<T>::removeThread(Thread *_thread,bool noDelete)
 {
     THREADSLOCK
-    qDebug() << __func__ << _thread->getTask();
+    Debug() << __func__ << _thread->getTask();
     threads->remove(_thread->getTask(),true);
     if(!noDelete){
         _thread->wait();
@@ -112,7 +110,7 @@ template <class T>
 void Application<T>::stop()
 {
     Debug() << this << __func__;
-    for(quint16 type = (quint16)ThreadWorker::Type::terminator-1;type>(quint16)ThreadWorker::Type::first;type--){
+    for(guint16 type = (guint16)ThreadType_terminator-1;type>(guint16)ThreadType_first;type--){
         threads_type threads(getThreads((ThreadWorker::Type)type));
         for(threads_type::value_type &thread : threads){
             thread->terminate();
@@ -122,12 +120,10 @@ void Application<T>::stop()
 }
 
 template <class T>
-Thread *Application<T>::shutdown(bool restarting)
+void Application<T>::shutdown(bool restarting)
 {
     Debug() << "Terminating...";
     terminator = new Terminator(restarting);
-    terminator->run();
-    return terminator;
 }
 
 template <class T>
@@ -136,8 +132,7 @@ bool Application<T>::handleSignal(int signal)
     if(Tracer::tracer!=nullptr){
         Tracer::endTrace();
     }
-    retval = signal;
-    shutdown();
+    make_event(Event::Type::ApplicationShutdown,"Signal::shutdown",(Object*)(gint64)signal)->punt();
     return true;
 }
 
@@ -153,9 +148,9 @@ void Application<T>::getStatus(json::value *status)const
     for(threads_reg_type::value_type const& thread : *threads){
         json::value obj(json::empty_object);
         Thread *_thread(thread.second->getThread());
-        if(!_thread->isStarted() || _thread->isFinished())
+        if(!_thread->isStarted() || _thread->isTerminated())
             continue;
-        lock_guard l(&_thread->critical_section);
+        lock_guard<mutex> l(_thread->critical_section);
         thread.second->writeToObject(&obj);//report the thread
         array.get_array().push_back(obj);
         thread.second->getStatus(status);//report sub-system
@@ -175,21 +170,27 @@ void Application<T>::post(Event *pevent)
 }
 
 template <class T>
-void Application<T>::exec()
+int Application<T>::exec()
 {
-    Event *event;
+    Event *pevent;
     try{
         while(!terminated && !this_thread::interruption_requested()){
             this_thread::interruption_point();
             {
                 this_thread::disable_interruption di;
-                m_queue.wait_pull(event);
-                event(event);
+                m_queue.wait_pull(pevent);
+                if(event(pevent))
+                    delete pevent;
             }
         }
     }catch(thread_interrupted &ti){
         shutdown();
+        return 1;
+    }catch(...){
+        shutdown();
+        return 2;
     }
+    return 0;
 }
 
 template <class T>
@@ -211,8 +212,8 @@ bool Application<T>::event(Event *pevent)
         return true;
     }
     try{
-        if((quint32)event->type() < (quint32)Event::Type::first
-        || (quint32)event->type() > (quint32)Event::Type::last){
+        if((guint32)pevent->type() < (guint32)Event::Type::first
+        || (guint32)pevent->type() > (guint32)Event::Type::last){
             return false;
         }
         switch(pevent->type()){
@@ -221,9 +222,6 @@ bool Application<T>::event(Event *pevent)
             Debug() << pevent->getName();
             break;
         }
-        case Event::Type::ThreadMessage:
-            // return false without processing
-            return false;
         case Event::Type::ThreadRemove:
         {
             removeThread(event_cast<Thread>(pevent)->getPointer());
@@ -238,14 +236,21 @@ bool Application<T>::event(Event *pevent)
         {
             Tracer::endTrace();
             if(terminator){
-                post(new QSEvent(QSEvent::Type::ApplicationShutdown));
+                post(new Event(Event::Type::ApplicationShutdown));
             }
             break;
         }
         case Event::Type::ApplicationShutdown:
         {
-            qDebug() << "Terminated...";
+            Debug() << "Terminated...";
             quit();
+            break;
+        }
+        case Event::Type::ApplicationRestart:
+        {
+            Debug() << "Restarted...";
+            terminated = false;
+            exec();
             break;
         }
         default:
@@ -261,7 +266,7 @@ bool Application<T>::event(Event *pevent)
 template class Application<PlegApplication>;
 
 Terminator::Terminator(bool _restarting)
-    :restarting(_restarting),m_thread(&run)
+    :restarting(_restarting),m_thread(&Terminator::run,this)
 {
 }
 
@@ -270,11 +275,13 @@ void Terminator::run()
     if(app){
         app->stop();
         if(!restarting){
-            app->post(new Event(Event::Type::ApplicationShutdown));
+            make_event(Event::Type::ApplicationShutdown,"Terminator::shutdown",(Object*)0)->punt();
         }else{
-            app->post(new Event(Event::Type::ApplicationRestart));
+            make_event(Event::Type::ApplicationRestart,"Terminator::restart",(Object*)0)->punt();
         }
     }
 }
+
+IApplication *iapp;
 
 } // namespace drumlin

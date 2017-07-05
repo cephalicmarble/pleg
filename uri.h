@@ -1,8 +1,11 @@
 #ifndef URI_H
 #define URI_H
 
-#include "object.h"
 #include <vector>
+using namespace std;
+#include "object.h"
+#include "socket.h"
+using namespace drumlin;
 
 namespace Pleg {
 
@@ -16,7 +19,7 @@ class Relevance;
  */
 struct UriParseFunc {
     string pattern;
-    typedef std::vector<string> params_type;
+    typedef string_list params_type;
     params_type params;
     params_type parts;
     params_type query;

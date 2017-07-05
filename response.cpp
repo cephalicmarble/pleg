@@ -29,6 +29,9 @@ using namespace boost;
 //#include "device.h"
 #include "application.h"
 #include "log.h"
+#include "files.h"
+#include "writer.h"
+#include "server.h"
 using namespace drumlin;
 
 namespace Pleg {
@@ -44,14 +47,14 @@ Response::~Response()
  */
 void Response::writeResponse()
 {
-    getRequest()->getSocket()->write("ARGLE BARGLE");
+    getRequest()->getSocketRef().write(string("ARGLE BARGLE"));
 }
 
 void Response::getStatus(json::value *status)const
 {
     json::object_t &obj(status->get_object());
-    obj.insert({"url",getRequest()->getUrl().toStdString()});
-    getRequest()->getSocket()->getStatus(status);
+    obj.insert({"url",getRequest()->getUrl()});
+    getRequest()->getSocketRef().getStatus(*status);
 }
 
 Options::Options(Request *req) : Response(req)
@@ -114,27 +117,26 @@ void Get::_get()
     const Relevance *rel(getRequest()->getRelevance());
     Debug() << "get::service - " << *rel;
     data.clear();
-    auto buffers(Buffers::Cache(CPS_call(this,Buffers::findRelevant,rel)));
-
-    if(getRequest()->getHeader("Content-Type").endsWith("json")){
+    auto buffers(Pleg::Cache(CPS_call(this,Buffers::findRelevant,rel)));
+    string header(getRequest()->getHeader("Content-Type"));
+    if(algorithm::find_tail(header,4)=="json"){
         headers << "Content-Type: text/json";
         getWriter()->writeJson(data);
-    }else if(rel->hasSource() && rel->getSource()->type == Sources::Source::Type::Video){
+    }else if(rel->hasSource() && rel->getSource()->type == Source_Gstreamer){
         headers << "Content-Type: image/png"
                 << "Cache-Control: no-cache"
         ;
         Sources::GStreamerSampleSource *gs(dynamic_cast<Sources::GStreamerSampleSource*>(rel->getSource()));
-        if(!gs){
-            //FIXME error
+        if(!gs || gs->getSrc().getWidth() == -1 || gs->getSrc().getHeight() == -1){
             return;
         }
         //I420 to RGB32_Premultiplied
         const unsigned char *_data = data.back()->data<unsigned char>();
-        int width = gs->getWidth(),height = gs->getHeight();
+        int width = gs->getSrc().getWidth(),height = gs->getSrc().getHeight();
 
         char filename[512];
         strcpy(filename,(filesystem::temp_directory_path().string()+filesystem::path::preferred_separator+"Server-png-XXXXXX").c_str());
-        mktemp(filename);
+        mkstemp(filename);
 
         FILE *fp = fopen(filename, "wb");
         if(!fp) return;
@@ -157,7 +159,7 @@ void Get::_get()
         );
         png_write_info(png, info);
 
-        png_color_struct row[width];
+        png_color_struct *row = (png_color_struct *)calloc(width,sizeof(png_color_struct));
 
         //        QImage image(ize(width,height),QImage::Format_RGB888);
         for (int y = 0; y < height; y++) {
@@ -177,10 +179,13 @@ void Get::_get()
 
         png_write_end(png, NULL);
 
+        free(row);
         fclose(fp);
 
         ifstream file(filename);
-        getRequest()->getSocket() << file;
+        stringstream ss;
+        ss << file.rdbuf();
+        getRequest()->getSocketRef().write(ss.str());
         file.close();
         filesystem::remove(filesystem::path(filename));
 
@@ -189,7 +194,7 @@ void Get::_get()
         for(const Buffers::buffer_vec_type::value_type &buffer : data){
             if(buffer){
                 Debug() << "process buffer " << buffer << buffer->getRelevance();
-                getRequest()->getSocket()->write(buffer); //raw
+                getRequest()->getSocketRef().write(byte_array(buffer->data<void>(),buffer->length())); //raw
             }
         }
     }
@@ -200,12 +205,11 @@ void Get::_dir()
     Config::JsonConfig config(Config::files_config_file);
     string root(config["/files_root"].get_string());
     Relevance rel(getRequest()->getRelevanceRef());
-    string dirpath(root+(rel.params.end()!=rel.params.find("r")?string(filesystem::path::preferred_separator)+rel.params.at("r"):""));
+    string dirpath(root+(rel.params.end()!=rel.params.find("r")?string(""+filesystem::path::preferred_separator)+rel.params.at("r"):""));
     json::value tree(json::empty_object);
     json::object_t &tree_obj(tree.get_object());
     tree_obj.insert({"type","directory"});
-    vector<string> path;
-    algorithm::split(path,dirpath,"/",algorithm::token_compress_on);
+    string_list path(string_list::fromString(dirpath,"/"));
     tree_obj.insert({"name",path.back()});
     path.pop_back();
     tree_obj.insert({"path",algorithm::join(path,"/")});
@@ -214,47 +218,48 @@ void Get::_dir()
     tree_obj.insert({"children",children});
     tree_obj.insert({"root",true});
     if(error.length())
-        getRequest()->getSocket()->write(error);
+        getRequest()->getSocketRef().write(error);
     else
-        getRequest()->getSocket()->write(json::to_string(tree).c_str());
+        getRequest()->getSocketRef().write(json::to_string(tree));
 }
 
 gint64 Get::readRange(ifstream &device,string mime,gint64 completeLength,string range)
 {
     byte_array bytes;
-    regex rx("\\d+");
+    boost::regex rx("\\d+");
 
-    if(regex_match(range,rx)){
+    if(boost::regex_match(range,rx)){
         device.seekg(lexical_cast<int>(range));
-        bytes = device.read(1);
+        char c;
+        device >> c;
+        bytes = ""+c;
     }else if(algorithm::find_tail(range,1)=="-"){
-        device->seekg(lexical_casl<int>(range));
+        device.seekg(lexical_cast<int>(range));
         device >> bytes;
     }else if(algorithm::find_head(range,1)=="-"){
-        device->seekg(0);
+        device.seekg(0);
         size_t sz(lexical_cast<int>(range.substr(1)));
         char *pc=(char*)malloc(sz);
         device.read(pc,sz);
         bytes.append(pc);
         free(pc);
     }else{
-        vector<string> rparts;
-        algorithm::split(rparts,range,"-",algorithm::token_compress_on);
-        device->seekg(lexical_cast<int>(rparts[0]));
+        string_list rparts(string_list::fromString(range,"-"));
+        device.seekg(lexical_cast<int>(rparts[0]));
         size_t sz(1+lexical_cast<int>(rparts[1])-lexical_cast<int>(rparts[0]));
         char *pc=(char*)malloc(sz);
-        device->read(pc,sz);
-        bytes << pc;
+        device.read(pc,sz);
+        bytes.append(pc,sz);
         free(pc);
     }
 
     if(2==boundary.length()){
-        hash<string> string_hash;
+        boost::hash<string> string_hash;
         boundary += string_hash(bytes.string());
     }
-    string thisBoundary(boundary+"\r\nContent-Type: "+mime+"\r\nContent-Range: bytes "+range+"/"+completeLength+"\r\n\r\n");
-    getRequest()->getSocket()->write(thisBoundary);
-    getRequest()->getSocket()->write(bytes);
+    string thisBoundary(boundary+"\r\nContent-Type: "+mime+"\r\nContent-Range: bytes "+range+"/"+lexical_cast<string>(completeLength)+"\r\n\r\n");
+    getRequest()->getSocketRef().write(thisBoundary);
+    getRequest()->getSocketRef().write(bytes);
 
     return bytes.length();
 }
@@ -272,8 +277,8 @@ void Get::_file()
     }else if(Files::virtualFilePath(filesystem::path::preferred_separator+rel.params.at("r")).length(),true){
         filepath = root+filesystem::path::preferred_separator+rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
     }
-    string path(Files::virtualFilePath(filepath));
-    if(!path.length()) {
+    filesystem::path path(Files::virtualFilePath(filepath));
+    if(!path.string().length()) {
         statusCode = "403 Forbidden";
         Log() << "Attempted to access illegal path.";
         return;
@@ -285,7 +290,7 @@ void Get::_file()
     }else{
         mime = "text/text";
     }
-    headers.append(string("Date: ")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()));
+    headers << string("Date: ")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time());
     if(!filesystem::exists(path)){
         statusCode = "404 File not found : " + path.string();
         return;
@@ -295,9 +300,8 @@ void Get::_file()
         statusCode = "404 Unreadable : " + path.string();
         return;
     }
-    fstream.close();
     gint64 contentLength = 0;
-    if(getRequest()->headers.contains("Range")){
+    if(getRequest()->headers.end() != getRequest()->headers.find("Range")){
         statusCode = "206 Partial Content";
         string::size_type sz(string::npos);
         string rangeHeader;
@@ -306,24 +310,25 @@ void Get::_file()
         }else{
             rangeHeader = getRequest()->headers["Range"];
         }
-        rangeHeader = algorithm::trim(rangeHeader);
+        algorithm::trim(rangeHeader);
         if(string::npos != rangeHeader.find_first_of(",")){
-            vector<string> ranges;
-            algorithm::split(ranges,rangeHeader,",",algorithm::token_compress_on);
+            string_list ranges(string_list::fromString(rangeHeader,","));
             for(string const& range : ranges){
-                contentLength += readRange(&file,mime,completeLength,range);
+                contentLength += readRange(fstream,mime,completeLength,range);
             }
         }else{
-            contentLength += readRange(&file,mime,completeLength,rangeHeader);
+            contentLength += readRange(fstream,mime,completeLength,rangeHeader);
         }
-        headers << string("Content-Type: multipart/byteranges; boundary=")+boundary.mid(2);
+        headers << string("Content-Type: multipart/byteranges; boundary=")+boundary.substr(2);
     }else{
-        contentLength = getRequest()->getSocket()->write(file.readAll());
+        std::stringstream ss;
+        ss << fstream.rdbuf();
+        contentLength = getRequest()->getSocketRef().write(ss.str());
     }
     std::stringstream ss;
     ss << "Content-Length: " << contentLength;
     headers << ss.str();
-    file.close();
+    fstream.close();
 }
 
 void Get::_lsof()
@@ -339,20 +344,22 @@ void Get::_lsof()
     }
     json::value object(json::empty_object);
     json::object_t &obj(object.get_object());
-    Files::writers_vec_type writers(Files::files.list());
-    for(Files::writers_vec_type::value_type const& fileWriter : writers){
-        if(algorithm::find_head(fileWriter->getFilePath(),rpath.length()) != rpath)
+    Files::Files::writers_vec_type writers(Files::files.list());
+    for(Files::Files::writers_vec_type::value_type const& fileWriter : writers){
+        string s(fileWriter->getFilePath());
+        if(algorithm::find_head(s,rpath.length()) != rpath)
             continue;
         if(rel.arguments.end() != rel.arguments.find("name")
                 &&
-           fileWriter->getFile().fileName() != rel.arguments.at("name")){
+            filesystem::path(fileWriter->getFilePath()).filename() != rel.arguments.at("name")){
             continue;
         }
         json::value file(json::empty_object);
         fileWriter->getStatus(&file);
         obj.insert({fileWriter->getFilePath(),file});
     }
-    getRequest()->getSocket()->write(json::to_string(object).c_str());
+    string s(json::to_string(object));
+    getRequest()->getSocketRef().write(byte_array(s.c_str(),s.length()));
 }
 
 /**
@@ -401,7 +408,7 @@ void Post::_touch()
     }
     ofstrm.close();
     Log() << "File" << rpath << "created";
-    getRequest()->getSocket()->write("File created");
+    getRequest()->getSocketRef().write(string("File created"));
 }
 
 void Post::_mkdir()
@@ -428,7 +435,7 @@ void Post::_mkdir()
         return;
     }
     Log() << "Directory" << rel.arguments.at("file") << "created in" << rpath;
-    getRequest()->getSocket()->write("Directory Created");
+    getRequest()->getSocketRef().write(string("Directory Created"));
 }
 
 void Post::makeWriterFile()
@@ -467,15 +474,15 @@ void Post::teeSourcePort()
 {
     getRequest()->delayed = true;
     Relevance const& rel(getRequest()->getRelevanceRef());
-    Sources::GStreamerSource *source = dynamic_cast<Sources::GStreamerSampleSource*>(rel.getSource());
-    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+    Sources::GStreamerSampleSource *source = dynamic_cast<Sources::GStreamerSampleSource*>(rel.getSource());
+    threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
     if(!source){
-        getRequest()->getSocket()->write("Not a sample source!");
+        getRequest()->getSocketRef().write(string("Not a sample source!"));
         Log() << rel.getSourceName() << "is not a sample source!";
         return;
     }
     if(0==std::distance(threads.begin(),threads.end())){
-        getRequest()->getSocket()->write("GStreamer not found!");
+        getRequest()->getSocketRef().write(string("GStreamer not found!"));
         Log() << "GStreamer not found!";
         return;
     }
@@ -484,9 +491,9 @@ void Post::teeSourcePort()
         if(!gst)
             return;
         if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::GStreamer::jobs_type::value_type const& job){
-            return job.first == (rel.arguments.at("source")+".tee").toStdString();
+            return job.first == (rel.arguments.at("source")+".tee");
         })) return;
-        Log() << "opening udp tee at" << rel.arguments.at("ip").toStdString() << rel.arguments.at("port").toStdString();
+        Log() << "opening udp tee at" << rel.arguments.at("ip") << rel.arguments.at("port");
         make_pod_event(Event::Type::GstStreamPort,"openSourcePort",getRequest())->send(thread);
         break;
     }
@@ -498,7 +505,7 @@ void Post::teeSourcePort()
  */
 Patch::Patch(Request *req) : Response(req)
 {
-    req->verb = Route::PATCH;
+    req->verb = PATCH;
     Debug() << "new" << req->getVerb() << req->getUrl();
 }
 
@@ -511,22 +518,44 @@ void Patch::service()
     headers.push_back("Content-Type: text/json");
 }
 
+template <class Response>
+struct list_routes
+{
+    typedef Response response_type;
+    typedef std::vector<Route<Response>> routes_type;
+    list_routes(Request *req,bool detail)
+        :routes(req->getServer()->getRoutes<response_type>()),m_detail(detail)
+    {}
+    routes_type routes;
+    void operator()(json::value &array)
+    {
+        for(auto & r : routes){
+            array.get_array().push_back(r.toString(m_detail));
+        }
+    }
+    bool m_detail;
+};
+
 void Patch::_routes()
 {
-    Server::routes_type const& routes(getRequest()->getServer()->getRoutes());
     json::value array(json::empty_array);
     Relevance const& rel(getRequest()->getRelevanceRef());
     bool detail(rel.arguments.end()!=rel.arguments.find("detail"));
-    for(Server::routes_type::value_type const& r : routes){
-        array.get_array().push_back(r.toString(detail));
-    }
-    getRequest()->getSocket()->write(json::to_string(array).c_str());
+    list_routes<Get> r1(getRequest(),detail);r1(array);
+    list_routes<Post> r2(getRequest(),detail);r2(array);
+    list_routes<Patch> r3(getRequest(),detail);r3(array);
+    list_routes<Catch> r4(getRequest(),detail);r4(array);
+    list_routes<Head> r5(getRequest(),detail);r5(array);
+    list_routes<Options> r6(getRequest(),detail);r6(array);
+    getRequest()->getSocketRef().write(json::to_string(array));
 }
 
 void Patch::_devices()
 {
     Config::JsonConfig config("devices.json");
-    config.save(getRequest()->getSocket());
+    std::stringstream ss;
+    config.save(ss);
+    getRequest()->getSocketRef().write(ss.str());
 }
 
 /**
@@ -538,9 +567,10 @@ void Patch::_status()
     getRequest()->getServer()->getStatus(&status);
     Sources::getStatus(&status);
     Files::getStatus(&status);
-    Buffers::Cache(CPS_call_void(Buffers::getCacheStatus,&status));
-    Buffers::Allocator(CPS_call_void(Buffers::getAllocatorStatus,&status));
-    getRequest()->getSocket()->write(json::to_string(status));
+    Pleg::Cache(CPS_call_void(Buffers::getCacheStatus,&status));
+    Pleg::Allocator(CPS_call_void(Buffers::getAllocatorStatus,&status));
+    string s(json::to_string(status));
+    getRequest()->getSocketRef().write(s);
 }
 
 void Patch::_meta()
@@ -637,8 +667,7 @@ void Patch::_meta()
 
 void Patch::_openPipe()
 {
-    Relevance const& rel(getRequest()->getRelevanceRef());
-    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+    threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
     if(0==distance(threads.begin(),threads.end())){
         threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getThread());
     }
@@ -649,7 +678,7 @@ void Patch::_openPipe()
         GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
             continue;
-        make_pod_event(Event::Type::GstConnectPipeline,__func__,getRequest())->send(gst);
+        make_event(Event::Type::GstConnectPipeline,__func__,getRequest())->send(gst->getThread());
     }
 }
 
@@ -666,7 +695,9 @@ void Patch::_config()
     }
     Log() << "GET config from" << file;
     Config::JsonConfig config(string(".")+filesystem::path::preferred_separator+file);
-    config.save(getRequest()->getSocket());
+    std::stringstream ss;
+    config.save(ss);
+    getRequest()->getSocketRef().write(ss.str());
 }
 
 /**
@@ -675,7 +706,7 @@ void Patch::_config()
 void Patch::_shutdown()
 {
     Log() << "Shutting down...";
-    getRequest()->getSocket()->write("Shutting down...");
+    getRequest()->getSocketRef().write(string("Shutting down..."));
     main_server->closed = true;
     make_event(Event::Type::ApplicationClose,"shutting down")->punt();
 }
@@ -686,7 +717,7 @@ void Patch::_shutdown()
 void Patch::_restart()
 {
     Log() << "Restarting...";
-    getRequest()->getSocket()->write("Restarting...");
+    getRequest()->getSocketRef().write(string("Restarting..."));
     main_server->closed = true;
     make_event(Event::Type::ApplicationClose,"restarting",(Object*)1UL)->punt();
 }
@@ -709,7 +740,7 @@ void Patch::_removeSource()
         Sources::sources.remove((const char*)*source);
         Log() << "Removed source " << (const char*)*source;
     }else{
-        threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+        threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
         if(0==distance(threads.begin(),threads.end())){
             statusCode = "404 GStreamer not active";
             Log() << statusCode;
@@ -725,7 +756,7 @@ void Patch::_removeSource()
 void Patch::timedOut()
 {
     Log() << "Scan timed out.";
-    getRequest()->getSocket()->write("Scan timed out.");
+    getRequest()->getSocketRef().write(string("Scan timed out."));
 }
 
 ///**
@@ -740,12 +771,11 @@ void Patch::timedOut()
 //    worker->signalTermination();
 //}
 
-void Dummy::catchall()
+void Catch::catchall()
 {
     statusCode = "200 OK";
     Get get(getRequest());
-    vector<string> parts;
-    algorithm::split(parts,getRequest()->getUrl(),"/",algorithm::token_compress_on);
+    string_list parts(string_list::fromString(getRequest()->getUrl(),"/"));
     Relevance *rel(getRequest()->getRelevance());
     rel->arguments.clear();
     rel->arguments.insert({"name",parts.back()});
@@ -756,12 +786,12 @@ void Dummy::catchall()
     }
     parts.pop_back();
     rel->params.clear();
-    rel->params.insert({"r",algorithm::join(parts,"/")});
+    rel->params.insert({"r",parts.join("/")});
     get._file();
 }
 
-void Dummy::service()
+void Catch::service()
 {
 }
 
-} // namespace drumlin
+} // namespace Pleg

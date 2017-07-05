@@ -1,6 +1,8 @@
 #ifndef SIGNALHANDLER_H
 #define SIGNALHANDLER_H
 
+namespace drumlin {
+
 class SignalHandler
 {
 public:
@@ -25,5 +27,7 @@ public:
 private:
     int _mask;
 };
+
+} // namespace drumlin
 
 #endif // SIGNALHANDLER_H

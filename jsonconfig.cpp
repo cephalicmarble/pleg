@@ -19,7 +19,7 @@ namespace Config {
 
 std::list<json::value> JsonConfig::jsons;
 
-JsonConfig::JsonConfig() : QObject(0),temporaryFlag(true)
+JsonConfig::JsonConfig() : Object(0),temporaryFlag(true)
 {
     from("{}");
 }
@@ -27,7 +27,7 @@ JsonConfig::JsonConfig() : QObject(0),temporaryFlag(true)
 /**
  * @brief JsonConfig::JsonConfig
  */
-JsonConfig::JsonConfig(std::string const& path,bool _isTemporary) : QObject(0),temporaryFlag(_isTemporary)
+JsonConfig::JsonConfig(std::string const& path,bool _isTemporary) : Object(0),temporaryFlag(_isTemporary)
 {
     if(!temporaryFlag){
         load("./devices.json");
@@ -41,7 +41,7 @@ JsonConfig::JsonConfig(std::string const& path,bool _isTemporary) : QObject(0),t
  * @param rhs JsonConfig&
  */
 JsonConfig::JsonConfig(const JsonConfig &rhs) :
-    QObject(0),json(rhs.json),temporaryFlag(rhs.temporaryFlag)
+    Object(0),json(rhs.json),temporaryFlag(rhs.temporaryFlag)
 {
 }
 
@@ -116,16 +116,17 @@ void JsonConfig::setKey(const json::object_initializer && l)
     json->get_object().insert(std::move(l));
 }
 
-json::value JsonConfig::from(BluetoothLEDevice *that)
-{
-    return at(std::string("/devices/")+that->getDeviceInfo().address().toString().toStdString());
-}
+//json::value JsonConfig::from(BluetoothLEDevice *that)
+//{
+//    return at(std::string("/devices/")+that->getDeviceInfo().address().toString().toStdString());
+//}
 
 void JsonConfig::from(std::string const& _json)
 {
     clearJson();
     jsons.push_back(json::from_string(_json));
     json = &jsons.back();
+    if(afterLoad)afterLoad(json);
 }
 
 /**
@@ -148,7 +149,6 @@ void JsonConfig::load(std::string const& path)
 void JsonConfig::load(istream &device)
 {
     from(byte_array::readAll(device).string());
-    emit afterLoad(json);
 }
 
 /**
@@ -157,19 +157,19 @@ void JsonConfig::load(istream &device)
  */
 void JsonConfig::save(ostream &device)
 {
-    emit beforeSave(json);
+    if(beforeSave)beforeSave(json);
     json::to_stream(device,*json,2);
 }
 
 /**
- * @brief JsonConfig::save : save to socket
- * @param socket Socket*
+ * @brief JsonConfig::save : save to request
+ * @param request Request*
  */
-void JsonConfig::save(Socket *socket)
+void JsonConfig::save(Pleg::Request *request)
 {
-    emit beforeSave(json);
+    if(beforeSave)beforeSave(json);
     std::string str(json::to_string(*json));
-    socket->write(str.c_str());
+    request->getSocketRef().write(str);
 }
 
 /**
@@ -178,10 +178,11 @@ void JsonConfig::save(Socket *socket)
  */
 void JsonConfig::save(std::string const& path)
 {
+    if(beforeSave)beforeSave(json);
     filesystem::path p(path);
     if(!filesystem::exists(p))
         return;
-    ifstream strm(path.c_str());
+    ofstream strm(path.c_str());
     if(!strm.is_open()){
         Debug() << "could not write config '" << path.c_str() << "'";
         return;
@@ -303,18 +304,6 @@ void JsonConfig::setDefaultValue(json::value *parent, const json::object_initial
 std::ostream &operator<<(std::ostream &stream,const JsonConfig &rel)
 {
     json::to_stream(stream,*rel.json);
-    return stream;
-}
-
-/**
- * @brief operator << : stream operator
- * @param stream QTextStream
- * @param rel JsonConfig
- * @return QTextStream
- */
-ostream &operator<<(ostream &stream,const JsonConfig &rel)
-{
-    stream << json::to_string(*rel.json).c_str();
     return stream;
 }
 

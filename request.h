@@ -8,36 +8,39 @@
 using namespace std;
 #include "object.h"
 #include "thread.h"
-#include "server.h"
 #include "uri.h"
 #include "relevance.h"
 #include "socket.h"
 #include "thread.h"
 #include "connection.h"
 #include "byte_array.h"
+#include "route.h"
 using namespace drumlin;
 
 namespace Pleg {
 
 class Response;
+class Server;
 
 /**
  * @brief The Request class : Runnable HTTP request handler
  */
 class Request :
     public ThreadWorker
-    ,public SocketHandler<typename Connection<Request>::socket_type>
-    ,public Connection<Request>
+    ,public SocketHandler<asio::ip::tcp>
+    ,public Connection<asio::ip::tcp>
 {
 public:
-    typedef Connection<Request> connection_type;
+    typedef Connection<asio::ip::tcp> connection_type;
     typedef typename connection_type::socket_type Socket;
     typedef map<string,string> headers_type;
-    typedef Route::verbs_type verbs_type;
-    Request(Server *parent,Thread *_thread);
+    Request(Pleg::Server *_server);
     virtual ~Request();
 
-    Socket *getSocket();
+    socket_type &getSocketRef()
+    {
+        return socket();
+    }
     /**
      * @brief getHeader : get HTTP header by name or blank string
      * @param name tring const&
@@ -45,8 +48,9 @@ public:
      */
     string getHeader(const string &name)
     {
-        if(headers.contains(name))
-            return *headers.find(name);
+        auto iter(headers.find(name));
+        if(headers.end()!=iter)
+            return iter->second;
         return "";
     }
     /**
@@ -79,16 +83,19 @@ public:
     virtual bool processTransmission(Socket*);
     virtual bool readyProcess(Socket*);
     virtual bool reply(Socket*);
-    virtual void completing(Socket *,qint64 bytes);
+    virtual void completing(Socket *,gint64 bytes);
+    virtual bool receivePacket(Socket *){return false;}
+    virtual void sort(Socket *,drumlin::buffers_type &){}
+    virtual void disconnected(Socket *){}
 
     virtual void writeToStream(std::ostream &stream)const;
     virtual void getStatus(json::value *status)const;
 
     virtual void shutdown();
-    virtual bool event(QEvent *event);
+    virtual bool event(Event *event);
 
     friend class Patch;
-    virtual void run(QObject *obj,Event *event);
+    virtual void run(Object *obj,Event *event);
     virtual void connection_start();
 
 public:
@@ -99,7 +106,6 @@ protected:
     string url;
     bool moreHeaders = true;
     byte_array body;
-    Route *route = nullptr;
     Relevance relevance;
     Response *response = nullptr;
     Response *createResponse();
@@ -107,5 +113,7 @@ private:
     Server *server;
     byte_array data;
 };
+
+} // namespace Pleg
 
 #endif // REQUEST_H

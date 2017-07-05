@@ -8,7 +8,7 @@ using namespace Pleg;
 #include <boost/algorithm/string.hpp>
 
 using namespace Transforms;
-namespace Factory {
+namespace Pleg {
 
     /**
      * @brief mutex : to protect malloc implementation
@@ -28,63 +28,62 @@ namespace Factory {
     /*
      * defines a thread-safe class factory for Passthrough
      */
-    defFactory(Transform,Passthrough,Response,transforms)
-    defRemove(Transform,Passthrough,transforms)
-
+}
+defFactory(Transform,Passthrough,Response,transforms)
+defRemove(Transform,Passthrough,transforms)
+namespace Factory {
     namespace Response {
         /**
          * @brief create a Response that will service the Request
          * @param that Request*
          * @return Response*
          */
-        Response *create(Request *that)
+        Pleg::Response *create(Pleg::Request *that)
         {
-            lock_guard l(&factory_mutex); \
-            Response *response(nullptr);
+            lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
+            Pleg::Response *response(nullptr);
 
             switch(that->getVerb()){
-            case Route::HEAD:
+            case HEAD:
                 response = new Head(that);
                 break;
-            case Route::CONTROL:
-            case Route::PATCH:
+            case PATCH:
                 response = new Patch(that);
                 break;
-            case Route::GET:
+            case GET:
                 response = new Get(that);
                 break;
-            case Route::POST:
+            case POST:
                 response = new Post(that);
                 break;
-            case Route::CATCH:
+            case CATCH:
             {
                 filesystem::path p(that->getUrl());
                 if(filesystem::exists(p)){
                     vector<string> parts;
-                    algorithm::split(parts,that->getUrl(),is_any_of("/"),algorithm::token_compress_on);
+                    string str(that->getUrl());
+                    algorithm::split(parts,str,algorithm::is_any_of("/"),algorithm::token_compress_on);
                     Relevance *rel(that->getRelevance());
                     rel->arguments.clear();
                     rel->arguments.insert({"name",parts.back()});
                     parts.pop_back();
                     rel->params.clear();
-                    rel->params.insert({"r",parts.join("/")});
+                    rel->params.insert({"r",algorithm::join(parts,"/")});
                     response = new Get(that);
                 }else{
-                    response = new Dummy(that);
+                    response = new Catch(that);
                 }
                 break;
             }
-            case Route::OPTIONS:
+            case OPTIONS:
                 response = new Options(that);
                 break;
-            case Route::NONE:
+            case NONE:
             default:
                 throw new Exception("Factory shouldn't go there.");
             }
             ResponseWriter *writer = new ResponseWriter(response);
             return response->setWriter(writer);
         }
-
     }
-
 }

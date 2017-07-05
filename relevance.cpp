@@ -22,10 +22,10 @@ Relevance::Relevance(bool _true):argParity(false),queryParity(false)
 {
     if(_true){
         source = (Sources::Source*)1;
-        uuid = 1;
+        uuid = string_gen("is all not one?");
     }else{
         source = nullptr;
-        uuid = gen("truthy");
+        uuid = string_gen("truthy");
     }
 }
 /**
@@ -40,7 +40,7 @@ Relevance::Relevance(Sources::Source *_source):argParity(false),queryParity(fals
         uuid = _source->getUuid();
     }else{
         source_name = "<empty>";
-        uuid = gen("empty");
+        uuid = string_gen("empty");
     }
 }
 
@@ -90,7 +90,7 @@ void Relevance::setSource(Sources::Source *_source)
  * @brief Relevance::getUuid
  * @return QUuid
  */
-QUuid Relevance::getUuid()const
+uuids::uuid Relevance::getUuid()const
 {
     return uuid;
 }
@@ -99,9 +99,18 @@ QUuid Relevance::getUuid()const
  * @brief Relevance::setUuid
  * @param _uuid Relevance
  */
-void Relevance::setUuid(QUuid _uuid)
+void Relevance::setUuid(uuids::uuid _uuid)
 {
     uuid = _uuid;
+}
+
+/**
+ * @brief Relevance::setUuid
+ * @param string uuid
+ */
+void Relevance::setUuid(string &_uuid)
+{
+    uuid = string_gen(_uuid);
 }
 
 void Relevance::setQueryParams(arguments_type query_params)
@@ -120,6 +129,13 @@ bool Relevance::compare(const Relevance &rhs)const
     return source_name == rhs.source_name;
 }
 
+bool Relevance::operator<(const Relevance &rhs)const
+{
+    if(*this==rhs)
+        return false;
+    return source_name < rhs.source_name;
+}
+
 void Relevance::operator=(const char *rhs)
 {
     source = Sources::sources.fromString<Sources::Source>(rhs);
@@ -127,7 +143,7 @@ void Relevance::operator=(const char *rhs)
         source_name = rhs;
         uuid = source->getUuid();
     }else{
-        uuid = gen("assigned empty");
+        uuid = string_gen("assigned empty");
     }
 }
 
@@ -160,27 +176,17 @@ void Relevance::toJson(json::value *object)const
 {
     json::object_t &obj(object->get_object());
     obj.insert({"source",source_name});
-    obj.insert({"uuid",lexical_cast<string>(uuid)});
+    stringstream ss;
+    ss << uuid;
+    obj.insert({"uuid",ss.str()});
 }
-
-/**
- * @brief operator const char*: for QDebug
- */
-Relevance::operator const char*()const
-{
-    std::stringstream ss;
-    ss << *this;
-    return strdup(ss.str().c_str());
-}
-
-namespace Relevance {
 
 /**
  * @brief fromArguments : derive Relevance from parsed URI
  * @param c_arguments UriParseFunc::arguments_type
  * @return Relevance
  */
-Relevance fromArguments(const UriParseFunc::arguments_type &c_arguments,bool argParity)
+Relevance Relevance::fromArguments(const UriParseFunc::arguments_type &c_arguments,bool argParity)
 {
     typedef UriParseFunc::arguments_type arguments_type;
     arguments_type &arguments = const_cast<arguments_type&>(c_arguments);
@@ -203,12 +209,10 @@ Relevance fromArguments(const UriParseFunc::arguments_type &c_arguments,bool arg
  * @param source Sources::Source*
  * @return Relevance
  */
-Relevance fromSource(const Sources::Source *source)
+Relevance Relevance::fromSource(const Sources::Source *source)
 {
     Relevance rel(source);
     return rel;
-}
-
 }
 
 /**
@@ -217,9 +221,9 @@ Relevance fromSource(const Sources::Source *source)
  * @param rhs Relevance const&
  * @return bool
  */
-bool operator==(const Relevance &lhs,const Relevance &rhs)
+bool Relevance::operator==(const Pleg::Relevance &rhs)const
 {
-    return lhs.toBool() && rhs.toBool() && lhs.compare(rhs);
+    return toBool() && rhs.toBool() && compare(rhs);
 }
 
 /**
@@ -228,7 +232,7 @@ bool operator==(const Relevance &lhs,const Relevance &rhs)
  * @param rhs Relevance const&
  * @return std::ostream &
  */
-std::ostream &operator<<(std::ostream &stream,const Relevance &rel)
+std::ostream &operator<<(std::ostream &stream,const Pleg::Relevance &rel)
 {
     if(!rel.source){
         stream << " relevance is irrelevant (tm)";
@@ -236,24 +240,25 @@ std::ostream &operator<<(std::ostream &stream,const Relevance &rel)
     }
     stream << &rel
            << " - name:" << rel.source_name
-           << " - uuid:" << lexical_cast<string>(rel.uuid);
+           << " - uuid:" << rel.uuid;
     return stream;
 }
 
-/**
- * @brief operator << : stream operator
- * @param stream QDebug&
- * @param rhs QRelevance const&
- * @return QDebug&
- */
-QDebug &operator<<(QDebug &stream,const Relevance &rhs)
+std::ostream &operator<<(std::ostream &strm,uuids::uuid const& uuid)
 {
-    stream << string(rhs);
-    return stream;
+    strm << "0x";
+    for(int i=0;i<16;i++){
+        strm << uuid.data[i];
+    }
+    return strm;
 }
+
+} // namespace Pleg
+
+namespace drumlin {
 
 template <>
-PodEvent<Relevance::arguments_type> *pod_event_cast(const Event *event,Relevance::arguments_type *out)
+PodEvent<Pleg::Relevance::arguments_type> *pod_event_cast(const Event *event,Pleg::Relevance::arguments_type *out)
 {
     if(out){
         PodEvent<Relevance::arguments_type> *ret = static_cast<PodEvent<Relevance::arguments_type>*>(const_cast<Event*>(event));
@@ -266,3 +271,5 @@ PodEvent<Relevance::arguments_type> *pod_event_cast(const Event *event,Relevance
     }
     return static_cast<PodEvent<Relevance::arguments_type>*>(const_cast<Event*>(event));
 }
+
+} // namespace drumlin

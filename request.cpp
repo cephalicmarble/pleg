@@ -7,13 +7,17 @@ using namespace Pleg;
 #include <sstream>
 using namespace std;
 #include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/tokenizer.hpp>
 using namespace boost;
+#include "thread.h"
 #include "application.h"
 #include "exception.h"
 #include "response.h"
 #include "factory.h"
 #include "socket.h"
+#include "server.h"
 using namespace drumlin;
 
 namespace Pleg {
@@ -22,11 +26,10 @@ namespace Pleg {
  * @brief Request::Request : only constructor
  * @param parent Server*
  */
-Request::Request(Server *parent)
-    : ThreadWorker(parent),SocketHandler(),connection_type()
+Request::Request(Pleg::Server *_server)
+    : ThreadWorker(ThreadType_http,(Object*)_server),SocketHandler(),connection_type()
 {
-    type = http;
-    server = parent;
+    server = _server;
 }
 
 /**
@@ -41,18 +44,18 @@ Request::~Request()
 /**
  * @brief Request::run : the thread function
  */
-void Request::run(Object *obj,Event *event)
+void Request::run(Object *,Event *)
 {
-    socket()->setTag(getThread());
-    socket()->blockingRead();
+    getSocketRef().setTag(getThread());
+    getSocketRef().blockingRead();
 }
 
 void Request::connection_start()
 {
-    qDebug() << "Starting thread " << req << thread;
-    thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()));
-    thread->setWorker(this);
-    app->addThread(thread,true);
+    lock_guard<recursive_mutex> l(critical_section);
+    thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()),this);
+    Debug() << "Starting thread " << this << *thread;
+    app->addThread(thread);
 }
 
 /**
@@ -68,9 +71,9 @@ bool Request::readyProcess(Socket*)
  * @brief Request::completingImpl : write a debug string
  * @param bytes quint32 number of bytes written
  */
-void Request::completing(Socket *socket,qint64 bytes)
+void Request::completing(Socket *socket,gint64 bytes)
 {
-    qDebug() << socket << "wrote" << bytes << "bytes.";
+    Debug() << socket << "wrote" << bytes << "bytes.";
 //    QThread::sleep(1);
     getThread()->quit();
 }
@@ -82,14 +85,23 @@ void Request::completing(Socket *socket,qint64 bytes)
 bool Request::processTransmission(Socket *socket)
 {
     vector<string> lines;
-    algorithm::split(lines,string(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush)),"\r\n",algorithm::token_compress_off);
+    string str(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush));
+    string::size_type pos(string::npos);
+    while((pos=str.find_first_of("\r\n"))!=string::npos)str.replace(pos,2,"¬");
+    algorithm::split(lines,str,algorithm::is_any_of("¬"),algorithm::token_compress_off);
     for(string &line : lines){
         if(verb == verbs_type::NONE) {
             vector<string> parts;
-            algorithm::split(parts,line,' ',algorithm::token_compress_on);
-            if(parts.length()<3 || (parts[2].trimmed().compare("HTTP/1.1") && parts[2].trimmed().compare("HTTP/1.0"))){
+            algorithm::split(parts,line,algorithm::is_any_of(" "),algorithm::token_compress_on);
+            if(distance(parts.begin(),parts.end())<3){
                 Critical() << "Bad HTTP";
-                socket->close();
+                socket->socket().close();
+                return false;
+            }
+            algorithm::trim(parts[2]);
+            if(parts[2].compare("HTTP/1.1") && parts[2].compare("HTTP/1.0")){
+                Critical() << "Outmoded HTTP";
+                socket->socket().close();
                 return false;
             }
             string verbp(parts[0]);
@@ -97,19 +109,23 @@ bool Request::processTransmission(Socket *socket)
             verb = (verbs_type)metaEnum<verbs_type>().toEnum(verbp,&ok);
             if(!ok){
                 Critical() << "Bad HTTP verb";
-                socket->close();
+                socket->socket().close();
                 return false;
             }
-            url = parts[1].trimmed();
+            algorithm::trim(parts[1]);
+            url = parts[1];
         }else{
             if(moreHeaders) {
                 if(!line.length()){
                     moreHeaders = false;
                 }else{
                     vector<string> parts;
-                    algorithm::split(parts,line,':',algorithm::token_compress_on);
-                    if(parts.length()>1)
-                        headers.insert(parts[0].trimmed(),parts[1].trimmed());
+                    algorithm::split(parts,line,algorithm::is_any_of(":"),algorithm::token_compress_on);
+                    if(distance(parts.begin(),parts.end())>1){
+                        algorithm::trim(parts[0]);
+                        algorithm::trim(parts[1]);
+                        headers.insert({parts[0],parts[1]});
+                    }
                 }
             }else if(verb == verbs_type::POST){
                 body.append(line);
@@ -132,19 +148,31 @@ bool Request::processTransmission(Socket *socket)
  * PATCH : unhandled - server control messages
  * GET, POST : factory-create response and service request, complete socket
  */
-bool Request::replyImpl(Socket *) {
-    if(verb != verbs_type::HEAD && verb != verbs_type::OPTIONS){
-        auto selected = server->select_route(this);
-        relevance = selected.first;
-        route = &*selected.second;
-        if(route->method==Route::NONE || !relevance.toBool()){
-            verb = verbs_type::CATCH;
-        }
-    }
+bool Request::reply(Socket *) {
     response = Factory::Response::create(this);
     response->service();
-    if(route)
-        response->metaObject()->invokeMethod(response,route->response_func,Qt::DirectConnection);
+    switch(verb){
+    case GET:
+        getServer()->select_route(this,dynamic_cast<Get*>(response),&relevance);
+        break;
+    case POST:
+        getServer()->select_route(this,dynamic_cast<Post*>(response),&relevance);
+        break;
+    case PATCH:
+        getServer()->select_route(this,dynamic_cast<Patch*>(response),&relevance);
+        break;
+    case HEAD:
+        getServer()->select_route(this,dynamic_cast<Head*>(response),&relevance);
+        break;
+    case OPTIONS:
+        getServer()->select_route(this,dynamic_cast<Options*>(response),&relevance);
+        break;
+    case CATCH:
+        getServer()->select_route(this,dynamic_cast<Catch*>(response),&relevance);
+        break;
+    default:
+        break;
+    }
     if(!delayed){
         end();
     }
@@ -157,38 +185,24 @@ bool Request::replyImpl(Socket *) {
 void Request::end()
 {
     Debug() << "finished";
-    vector<string> msg;
-    msg.push_back(verb);
-    msg.push_back(url);
-    msg.push_back("finished.");
+    string_list msg;
+    msg << metaEnum<verbs_type>().toString(verb) << url << "finished.";
     response->headers << "Access-Control-Allow-Origin: *";
-    string headers(response->headers.join("\r\n"));
+    string headers(algorithm::join(response->headers,"\r\n"));
     std::stringstream ss;
     ss << "HTTP/1.1 " << response->getStatusCode() << "\r\n";
-    ss << headers.toStdString() << "\r\n";
-    if(!~headers.indexOf("Content-Length")){
-        ss << "Content-Length: " << socket->bytesToWrite() << "\r\n";
+    ss << headers << "\r\n";
+    if(string::npos == headers.find_first_of("Content-Length")){
+        ss << "Content-Length: " << socket().bytesToWrite() << "\r\n";
     }
     ss << "\r\n";
-    socket->write(ss.str().c_str(),true);
-    if(socket->state()==Socket::ConnectedState)
-        close();
+    socket().write(ss.str(),true);
+    socket().complete();
 }
 
 void Request::shutdown()
 {
-    if(socket && socket->state()==Socket::ConnectedState)
-        end();
     signalTermination();
-}
-
-/**
- * @brief Request::getSocket
- * @return Socket*
- */
-Socket *Request::getSocket()
-{
-    return socket;
 }
 
 /**
@@ -197,9 +211,9 @@ Socket *Request::getSocket()
  */
 void Request::writeToStream(std::ostream &stream)const
 {
-    tringList list;
-    list << QMetaEnum::fromType<verbs_type>().valueToKey(verb) << url << "HTTP/1.1";
-    stream << list.join(" ").toStdString();
+    string_list list;
+    list << metaEnum<verbs_type>().toString(verb) << url << "HTTP/1.1";
+    stream << algorithm::join(list," ");
 }
 
 void Request::getStatus(json::value *status)const{
@@ -213,36 +227,33 @@ void Request::getStatus(json::value *status)const{
  * @param event QEvent*
  * @return bool
  */
-bool Request::event(QEvent *event)
+bool Request::event(Event *pevent)
 {
-    Event *pevent = dynamic_cast<Event*>(event);
-    if(!pevent){
-        quietDebug() << this << __func__ << "Unimplemented" << event->type();
-        return false;
-    }
     quietDebug() << this << __func__ << pevent->type();
-    if((quint32)pevent->type() > (quint32)Event::Type::first
-            && (quint32)pevent->type() < (quint32)Event::Type::last){
+    if((guint32)pevent->type() > (guint32)Event::Type::first
+            && (guint32)pevent->type() < (guint32)Event::Type::last){
         switch(pevent->type()){
         case Event::Type::GstStreamPort:
         {
-            getSocket()->write("Opened port:"+getRelevanceRef().arguments.at("port"));
+            getSocketRef().write("Opened port:"+getRelevanceRef().arguments.at("port"));
             signalTermination();
             break;
         }
         case Event::Type::GstStreamFile:
         {
-            getSocket()->write("Writing file:"+getRelevanceRef().arguments.at("filepath"));
+            getSocketRef().write("Writing file:"+getRelevanceRef().arguments.at("filepath"));
             Patch patch(this);
             patch._status();
             signalTermination();
             break;
         }
         default:
-            qDebug() << type << __func__ <<  "unimplemented";
+            Debug() << type << __func__ <<  "unimplemented";
             return false;
         }
         return true;
     }
     return false;
 }
+
+} // namespace Pleg

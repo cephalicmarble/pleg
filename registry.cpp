@@ -4,10 +4,12 @@
 #include "source.h"
 #include <boost/thread/lock_guard.hpp>
 
+namespace drumlin {
+
 template <>
 void Registry<WorkObject>::remove(const std::string &str,bool noDelete)
 {
-    lock_guard l(&mutex);
+    lock_guard<recursive_mutex> l(mutex);
     typename map_type::iterator it(map->find(str));
     if(it!=map->end()){
         (*it).second->stop();
@@ -20,7 +22,7 @@ void Registry<WorkObject>::remove(const std::string &str,bool noDelete)
 template <class Type>
 void Registry<Type>::remove(const std::string &str,bool noDelete)
 {
-    lock_guard l(&mutex);
+    lock_guard<recursive_mutex> l(mutex);
     typename map_type::iterator it(map->find(str));
     if(it!=map->end()){
         if(!noDelete)
@@ -29,5 +31,7 @@ void Registry<Type>::remove(const std::string &str,bool noDelete)
     }
 }
 
-template class Registry<Sources::Source>;
-template class Registry<ThreadWorker>;
+template class Registry<Pleg::Sources::Source>;
+template class Registry<drumlin::ThreadWorker>;
+
+} // namespace drumlin

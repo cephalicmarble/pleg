@@ -1,5 +1,5 @@
-#ifndef QSTHREAD_H
-#define QSTHREAD_H
+#ifndef THREAD_H
+#define THREAD_H
 
 #include <iostream>
 #include <string>
@@ -11,6 +11,20 @@ using namespace boost;
 #include "object.h"
 #include "metatypes.h"
 #include "registry.h"
+using namespace drumlin;
+#include "glib.h"
+
+#define ThreadTypes (\
+    ThreadType_first,\
+    ThreadType_http,\
+    ThreadType_bluez,\
+    ThreadType_gstreamer,\
+    ThreadType_transform,\
+    ThreadType_terminator,\
+    ThreadType_test,\
+    ThreadType_last\
+)
+ENUM(ThreadType,ThreadTypes)
 
 namespace drumlin {
 
@@ -25,6 +39,8 @@ class StatusReporter {
     virtual void getStatus(json::value *status)const=0;
 };
 
+class ThreadWorker;
+
 /**
  * @brief The QSThread class
  */
@@ -35,7 +51,8 @@ public:
     void terminate();
     static mutex critical_section;
     Thread(string _task);
-    boost::thread &getBoostThread(){ return m_thread; }
+    Thread(string _task,ThreadWorker *_worker);
+    boost::thread const& getBoostThread()const{ return m_thread; }
     /**
      * @brief getWorker
      * @return ThreadWorker*
@@ -63,15 +80,21 @@ public:
 
     virtual void run();
     virtual void exec();
-    virtual void event(Event *);
+    virtual bool event(Event *);
     virtual void quit();
     void post(Event *);
     operator const char*()const;
     friend std::ostream &operator<<(ostream &stream,const Thread &rel);
     friend class ThreadWorker;
+    void wait(gint64 millis = -1){
+        if(millis<0)
+            m_thread.join();
+        else
+            m_thread.try_join_for(chrono::milliseconds(millis));
+    }
 private:
     boost::thread m_thread;
-    boost::thread::sync_queue<Event*> m_queue;
+    boost::concurrent::sync_queue<Event*> m_queue;
     string task;
     ThreadWorker *worker;
     bool ready = false;
@@ -83,17 +106,6 @@ private:
      */
     void setWorker(ThreadWorker *_worker){ worker = _worker; }
 };
-
-#define ThreadTypes(\
-    first,\
-    http,\
-    bluez,\
-    gstreamer,\
-    transform,\
-    terminator,\
-    last\
-)
-#define ENUM(ThreadType,ThreadTypes)
 
 /**
  * @brief The QSThreadWorker class
@@ -116,9 +128,9 @@ public:
      */
     virtual void writeToStream(std::ostream &stream)const;
     virtual void writeToObject(json::value *obj)const;
-    virtual void getStatus(json::value *status)const{}
+    virtual void getStatus(json::value *)const{}
 public:
-    static mutex critical_section;
+    static recursive_mutex critical_section;
     /**
      * @brief getThread
      * @return  Thread*
@@ -134,21 +146,20 @@ public:
      * @brief start
      */
     jobs_type const& getJobs()const{ return jobs; }
-    void start(){ getThread()->start(); }
     void stop();
-    ThreadWorker();
-    ThreadWorker(string task);
-    ThreadWorker(Thread *_thread);
+    ThreadWorker(Type _type,Object *);
+    ThreadWorker(Type _type,string task);
+    ThreadWorker(Type _type,Thread *_thread);
     virtual ~ThreadWorker();
     virtual void shutdown()=0;
     virtual void report(json::value *obj,ReportType type)const;
-    virtual void work(Object *sender,Event *reason);
+    virtual void work(Object *,Event *){}
     friend class Server;
-private:
+protected:
     Thread *thread;
     Type type;
 };
 
 } // namespace drumlin
 
-#endif // QSTHREAD_H
+#endif // THREAD_H

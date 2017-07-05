@@ -3,6 +3,7 @@ using namespace Pleg;
 #include <tao/json.hpp>
 using namespace tao;
 #include <functional>
+#include <fstream>
 using namespace std;
 #include <boost/uuid/uuid.hpp>
 #include <boost/filesystem.hpp>
@@ -36,8 +37,8 @@ void Writer::writeJson(const Buffers::buffer_vec_type buffers)
             vec.push_back(value);
             array.get_array().push_back(*value);
         }
-        byte_array bytes(json::to_string(array).c_str());
-        write(&bytes);
+        string str(json::to_string(array));
+        write(byte_array::fromRawData(str));
     }
     for(auto value : vec){
         delete value;
@@ -52,21 +53,24 @@ void Writer::writeJson(const Buffers::buffer_vec_type buffers)
 void Writer::writeJson(const Buffers::Buffer *buffer)
 {
     json::value *object(getJsonObject(buffer));
-    byte_array bytes(json::to_string(*object).c_str());
-    write(&bytes);
+    string str(json::to_string(*object));
+    write(byte_array::fromRawData(str));
     delete object;
 }
 
 json::value *Writer::getJsonObject(const Buffers::Buffer *buffer)
 {
-    QUuid uuid(buffer->getRelevanceRef().getUuid());
+    uuids::uuid uuid(buffer->getRelevanceRef().getUuid());
     json::value *object(Config::object());
+    stringstream ss;
+    ss << uuid;
     object->get_object().insert({
-        { "uuid", uuid.toString().toStdString().c_str() },
-        { "timestamp", buffer->getTimestampRef().toMSecsSinceEpoch()/1000.0 }
+        { "uuid", ss.str() },
+        { "timestamp", posix_time::to_simple_string(buffer->getTimestampRef()) }
     });
     do{
         Sources::Source *source(buffer->getRelevanceRef().getSource());
+        object->insert({ {"name",source->getName()} });
 //        Sources::HeartRateSource *hrs(dynamic_cast<Sources::HeartRateSource*>(source));
 //        if(uuid==Sources::HeartRateSource::UUID && hrs){
 //            const Sources::HeartRateData *data(buffer->data<Sources::HeartRateData>());
@@ -96,13 +100,12 @@ json::value *Writer::getJsonObject(const Buffers::Buffer *buffer)
 //        }
         Sources::MockSource *mock(dynamic_cast<Sources::MockSource*>(source));
         if(uuid==uuids::uuid() && mock){
-            object->insert({ {"mock",*buffer->data<quint64>()} });
+            object->insert({ {"mock",*buffer->data<guint64>()} });
             break;
         }
         Sources::GStreamerOffsetSource *offset(dynamic_cast<Sources::GStreamerOffsetSource*>(source));
         if(offset){
-            object->insert({ {"offset",*buffer->data<quint64>()} });
-            object->insert({ {"file",offset->getFilePath().toStdString()} });
+            object->insert({ {"offset",*buffer->data<guint64>()} });
             break;
         }
     }while(false);
@@ -113,11 +116,11 @@ json::value *Writer::getJsonObject(const Buffers::Buffer *buffer)
  * @brief MockSource::meta : return charting metadata
  * @param tring source
  */
-void Writer::writeMetaJson(const tring &_source)
+void Writer::writeMetaJson(const string &_source)
 {
     Sources::Source *source(Sources::sources.fromString<Sources::Source>(_source));
     json::value object{{
-        { "source", _source.toStdString().c_str() }
+        { "source", _source.c_str() }
     }};
     do{
 //        Sources::HeartRateSource *hrs(dynamic_cast<Sources::HeartRateSource*>(source));
@@ -136,8 +139,8 @@ void Writer::writeMetaJson(const tring &_source)
             break;
         }
     }while(false);
-    byte_array bytes(json::to_string(object).c_str());
-    write(&bytes);
+    string str(json::to_string(object));
+    write(byte_array(str.c_str(),str.length()));
 }
 
 /**
@@ -146,16 +149,16 @@ void Writer::writeMetaJson(const tring &_source)
  */
 void ResponseWriter::write(const Buffers::Buffer *buffer)
 {
-    getResponse()->getRequest()->getSocket()->write(buffer->data<const char>());
+    getResponse()->getRequest()->getSocketRef().write(byte_array(buffer->data<const char>(),buffer->length()));
 }
 
-void ResponseWriter::write(const byte_array *bytes)
+void ResponseWriter::write(byte_array const& bytes)
 {
-    getResponse()->getRequest()->getSocket()->write(bytes);
+    getResponse()->getRequest()->getSocketRef().write(bytes);
 }
 
-FileWriter::FileWriter(tring const& filename)
-    :Writer(0),Buffers::Acceptor(),filePath(filename),file(filename)
+FileWriter::FileWriter(string const& filename)
+    :Writer(0),Buffers::Acceptor(),filePath(filename),device(std::ofstream(filename))
 {
 }
 
@@ -165,7 +168,7 @@ void FileWriter::accept(const Buffers::Buffer *buffer)
     write(buffer);
 }
 
-void FileWriter::flush(const Buffers::Buffer *buffer)
+void FileWriter::flush(const Buffers::Buffer *)
 {
 }
 
@@ -174,14 +177,14 @@ void FileWriter::write(const Buffers::Buffer *buffer)
     current = buffer->getTimestampRef();
     format.recordBuffer(buffer);
     json::value *object(getJsonObject(buffer));
-    byte_array bytes(json::to_string(*object).c_str());
-    write(&bytes);
+    string s(json::to_string(*object));
+    write(byte_array(s.c_str(),s.length()));
     delete object;
 }
 
-void FileWriter::write(const byte_array *bytes)
+void FileWriter::write(byte_array const& bytes)
 {
-    device << *bytes;
+    device << bytes;
     device.flush();
 }
 

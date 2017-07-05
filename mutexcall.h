@@ -44,7 +44,7 @@ public:
     /**
      * @brief Continuer : sets the QMutex::Recursive flag
      */
-    Continuer():{}
+    Continuer(){}
     /**
      * @brief ~Continuer : necessary
      */

@@ -8,9 +8,9 @@
 #include <boost/type_index.hpp>
 #include <boost/functional.hpp>
 #include <boost/preprocessor.hpp>
+#include <boost/thread.hpp>
 using namespace boost;
 using namespace std;
-#include "event.h"
 
 namespace drumlin {
 
@@ -37,13 +37,16 @@ struct namedMethodMetaObject {
 
 };
 
-class Object;
+class Event;
+class Thread;
 
 class Object
 {
 public:
     Object(Object *parent = nullptr):m_parent(parent){}
+    virtual ~Object(){}
     virtual bool event(Event *){ return false; }
+    Object *parent()const{return m_parent;}
 private:
     Object *m_parent;
 };

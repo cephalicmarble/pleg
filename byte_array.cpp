@@ -1,6 +1,8 @@
 #include "byte_array.h"
 
+#include <string>
 #include <sstream>
+using namespace std;
 
 namespace drumlin {
 
@@ -10,20 +12,50 @@ byte_array::byte_array()
     m_length = 0;
 }
 
-byte_array::byte_array(void *mem,size_t length)
+byte_array::byte_array(const void *mem,size_t length)
 {
-    m_data = mem;
+    m_data = const_cast<void*>(mem);
     m_length = length;
 }
 
-static byte_array byte_array::fromRawData(void *mem,size_t length)
+byte_array::~byte_array()
+{
+    clear();
+}
+
+void byte_array::clear()
+{
+    if(m_destroy){
+        free(m_data);
+        m_destroy = false;
+    }
+    m_data = nullptr;
+    m_length = 0;
+}
+
+byte_array &byte_array::operator=(const char *pc)
+{
+    clear();
+    m_data = const_cast<void*>(static_cast<const void*>(pc));
+    m_length = 1;
+    return *this;
+}
+
+byte_array byte_array::fromRawData(void *mem,size_t length)
 {
     byte_array bytes;
     bytes.append(mem,length);
     return bytes;
 }
 
-static byte_array byte_array::readAll(istream &strm)
+byte_array byte_array::fromRawData(std::string & str)
+{
+    byte_array bytes;
+    bytes.append(str.c_str(),str.length());
+    return bytes;
+}
+
+byte_array byte_array::readAll(istream &strm)
 {
     stringstream ss;
     char pc[1024];
@@ -32,23 +64,29 @@ static byte_array byte_array::readAll(istream &strm)
         ss << std::string(pc,sz);
     }
     byte_array bytes;
-    bytes.append(ss.data(),ss.length());
+    bytes.append(ss.str().c_str(),ss.str().length());
     return bytes;
 }
 
-void byte_array::append(std::string &str)
+void byte_array::append(std::string const& str)
 {
     append(str.c_str(),str.length());
 }
 
-void byte_array::append(void *m_next,size_t length)
+void byte_array::append(std::string & str)
 {
-    void *pdest = malloc(m_length+length);
+    append(str.c_str(),str.length());
+}
+
+void byte_array::append(const void *m_next,size_t length)
+{
+    char *pdest = (char*)malloc(m_length+length);
     memmove(pdest,data(),m_length);
     memmove(pdest+m_length,m_next,length);
     if(m_data != nullptr)free(m_data);
     m_data = pdest;
     m_length += length;
+    m_destroy = true;
 }
 
 /**
@@ -56,7 +94,7 @@ void byte_array::append(void *m_next,size_t length)
      * @param _data void*
      * @param _len qint64
      */
-Buffer::Buffer(void*_data,qint64 _len):type(FreeBuffer)
+Buffer::Buffer(void*_data,gint64 _len):type(FreeBuffer)
 {
     buffers.free_buffer.len = _len;
     buffers.free_buffer.data = (char*)malloc(buffers.free_buffer.len);
@@ -78,9 +116,9 @@ Buffer::Buffer(byte_array const& bytes):type(FreeBuffer)
      * @brief Buffer::Buffer : copy from tring
      * @param  tring
      */
-Buffer::Buffer(string const& str):type(FreeBuffer)
+Buffer::Buffer(string const& _str):type(FreeBuffer)
 {
-    const char *str(str.c_str());
+    const char *str(_str.c_str());
     buffers.free_buffer.len = strlen(str);
     buffers.free_buffer.data = strdup(str);
 }
@@ -99,7 +137,7 @@ Buffer::Buffer(const char *cstr):type(FreeBuffer)
      * @brief Buffer::Buffer : reference a buffer
      * @param buffer Buffers::Buffer*
      */
-Buffer::Buffer(const Buffers::Buffer *buffer):type(CacheBuffer)
+Buffer::Buffer(const IBuffer *buffer):type(CacheBuffer)
 {
     buffers._buffer = buffer;
 }
@@ -134,11 +172,26 @@ Buffer::operator byte_array()
 {
     switch(type){
     case FreeBuffer:
-        return byte_array::fromRawData(data<char>(),length());
+        return byte_array::fromRawData(const_cast<void*>(data<void>()),length());
     case CacheBuffer:
-        return *buffers._buffer;
+        return byte_array::fromRawData(const_cast<void*>(buffers._buffer->data()),buffers._buffer->length());
+    default:
+        return byte_array();
     }
-    return byte_array();
+}
+
+ostream& operator<< (ostream &strm, const drumlin::byte_array &bytes)
+{
+    strm << bytes.string();
+    return strm;
+}
+
+istream& operator>> (istream& strm, drumlin::byte_array &bytes)
+{
+    stringstream ss;
+    ss << strm.rdbuf();
+    bytes.append(ss.str().c_str(),ss.str().length());
+    return strm;
 }
 
 } //namespace drumlin

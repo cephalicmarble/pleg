@@ -8,13 +8,12 @@ using namespace tao;
 
 namespace Pleg {
 
-Log::Log()
+Log::Log():lock(main_server->mutex)
 {
 }
 
 Log::~Log()
 {
-    lock_guard l(&main_server->mutex);
     main_server->getLog().push_back(ss.str());
 }
 
@@ -30,5 +29,3 @@ Log &Log::operator<<(std::string t)
 }
 
 } // namespace Pleg
-
-Log &log(){ return Log(); }

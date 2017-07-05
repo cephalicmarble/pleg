@@ -9,6 +9,8 @@ using namespace tao;
 #include <algorithm>
 using namespace std;
 #include <boost/thread/lock_guard.hpp>
+#include <boost/thread/mutex.hpp>
+using namespace boost;
 #include "exception.h"
 #include "request.h"
 #include "response.h"
@@ -18,10 +20,11 @@ using namespace std;
 #include "gstreamer.h"
 #include "cursor.h"
 #include "jsonconfig.h"
-
-recursive_mutex Server::mutex;
+using namespace drumlin;
 
 namespace Pleg {
+
+recursive_mutex Server::mutex;
 
 /**
  * @brief Server::Server : only constructor
@@ -33,7 +36,6 @@ Server::Server(int argc,char **argv,int port) : ApplicationBase(argc,argv),Serve
 
 Server::~Server()
 {
-    delete server;
 }
 
 /**
@@ -43,68 +45,54 @@ Server::~Server()
  */
 void Server::defineRoutes()
 {
-    addRoute(Uri::parser("dir?r")              ,"_dir",Route::GET);
-    addRoute(Uri::parser("file/{name?}?r")     ,"_file",Route::GET);
-    addRoute(Uri::parser("lsof/{name?}?r-")    ,"_lsof",Route::GET);
+    get(Uri::parser("dir?r")                         ,&Get::_dir);
+    get(Uri::parser("file/{name?}?r")                ,&Get::_file);
+    get(Uri::parser("lsof/{name?}?r-")               ,&Get::_lsof);
 
-    addRoute(Uri::parser("touch/{file?}?r-")   ,"_touch",Route::POST);
-    addRoute(Uri::parser("mkdir/{file?}?r-")   ,"_mkdir",Route::POST);
-    addRoute(Uri::parser("write/{source?}/{file?}?r-"),"makeWriterFile",Route::POST);
-    addRoute(Uri::parser("stop/{source?}/{file?}?r-"),"stopWriterFile",Route::POST);
-    addRoute(Uri::parser("tee/{source?}/{ip?}/{port?}"),"teeSourcePort",Route::POST);
+    post(Uri::parser("touch/{file?}?r-")             ,&Post::_touch);
+    post(Uri::parser("mkdir/{file?}?r-")             ,&Post::_mkdir);
+    post(Uri::parser("write/{source?}/{file?}?r-")   ,&Post::makeWriterFile);
+    post(Uri::parser("stop/{source?}/{file?}?r-")    ,&Post::stopWriterFile);
+    post(Uri::parser("tee/{source?}/{ip?}/{port?}")  ,&Post::teeSourcePort);
 
-    addRoute(Uri::parser("routes")             ,"_routes",Route::CONTROL);
-    addRoute(Uri::parser("routes/{detail?}")   ,"_routes",Route::CONTROL);
+    patch(Uri::parser("routes")                      ,&Patch::_routes);
+    patch(Uri::parser("routes/{detail?}")            ,&Patch::_routes);
 
-    addRoute(Uri::parser("devices")            ,"_devices",Route::CONTROL);
-    addRoute(Uri::parser("status")             ,"_status",Route::CONTROL);
-    addRoute(Uri::parser("meta/{source?}")     ,"_meta",Route::CONTROL);
-//    addRoute(Uri::parser("scan/{file?}")       ,"_scanToFile",Route::CONTROL);
-    addRoute(Uri::parser("scan")               ,"_scan",Route::CONTROL);
+    patch(Uri::parser("devices")                     ,&Patch::_devices);
+    patch(Uri::parser("status")                      ,&Patch::_status);
+    patch(Uri::parser("meta/{source?}")              ,&Patch::_meta);
+    //addRoute(Uri::parser("scan/{file?}")              ,&Patch::_scan);
+    //addRoute(Uri::parser("scan")                        ,"_scan"                ,PATCH);
 
-    addRoute(Uri::parser("connect/{mac?}/{name?}"),"_connectSource",Route::CONTROL);
-    addRoute(Uri::parser("connect/{mac?}")     ,"_connect",Route::CONTROL);
-    addRoute(Uri::parser("disconnect/{mac?}")  ,"_disconnect",Route::CONTROL);
-    addRoute(Uri::parser("remove/{source?}")   ,"_removeSource",Route::CONTROL);
+//    addRoute(Uri::parser("connect/{mac?}/{name?}")      ,"_connectSource"       ,PATCH);
+//    addRoute(Uri::parser("connect/{mac?}")              ,"_connect"             ,PATCH);
+//    addRoute(Uri::parser("disconnect/{mac?}")           ,"_disconnect"          ,PATCH);
+//    addRoute(Uri::parser("remove/{source?}")            ,"_removeSource"        ,PATCH);
 
-    addRoute(Uri::parser("pipe/{name?}")       ,"_openPipe",Route::CONTROL);
+    patch(Uri::parser("pipe/{name?}")                ,&Patch::_openPipe);
 
-    addRoute(Uri::parser("config/{file?}")     ,"_config",Route::CONTROL);
+    patch(Uri::parser("config/{file?}")              ,&Patch::_config);
 
-    addRoute(Uri::parser("shutdown")           ,"_shutdown",Route::CONTROL);
-    addRoute(Uri::parser("restart")            ,"_restart",Route::CONTROL);
+    patch(Uri::parser("shutdown")                    ,&Patch::_shutdown);
+    patch(Uri::parser("restart")                     ,&Patch::_restart);
 
-    addRoute(Uri::parser("{source?}?c-")          ,"_get",Route::GET);
+    get(Uri::parser("{source?}?c-")                  ,&Get::_get);
 
-    addRoute(Uri::parser(""),"catchall",Route::CATCH);
+    catchall(Uri::parser("")                         ,&Catch::catchall);
 }
 
-/**
- * @brief Server::select_route : find a route
- * @param request
- * @return
- */
-Server::route_return_type Server::select_route(Request *request)
-{
-    lock_guard l(&mutex);
-    Relevance relevance;
-    routes_type::iterator it(routes.end());
-    for(routes_type::value_type &route : routes){
-        if(route.method & request->getVerb()){
-            relevance = route.parse_func(request->getUrl());
-            if(relevance.toBool()){
-                it = routes_type::iterator(&route);
-                break;
-            }
-        }
-    }
-    if(it == routes.end()){
-        Debug() << "Irrelevant HTTP";
-        return {false,std::prev(routes.end())};
-    }
-    Debug() << it->parse_func.pattern;
-    return {relevance,it};
-}
+template <>
+std::vector<Route<Get>> const& Server::getRoutes<Get>()const{ return get_routes; }
+template <>
+std::vector<Route<Head>> const& Server::getRoutes<Head>()const{ return head_routes; }
+template <>
+std::vector<Route<Options>> const& Server::getRoutes<Options>()const{ return options_routes; }
+template <>
+std::vector<Route<Post>> const& Server::getRoutes<Post>()const{ return post_routes; }
+template <>
+std::vector<Route<Patch>> const& Server::getRoutes<Patch>()const{ return patch_routes; }
+template <>
+std::vector<Route<Catch>> const& Server::getRoutes<Catch>()const{ return catch_routes; }
 
 /**
  * @brief Server::start : start the server
@@ -112,7 +100,7 @@ Server::route_return_type Server::select_route(Request *request)
 void Server::start()
 {
     Log() << "Started Server";
-    lock_guard l(&app->thread_critical_section);
+    lock_guard<boost::mutex> l(app->thread_critical_section);
     defineRoutes();
     ServerBase::start();
 }
@@ -121,23 +109,24 @@ void Server::stop()
 {
     Log() << "Stopped Server";
     ServerBase::stop();
-    qDebug() << "Removing sources...";
+    Debug() << "Removing sources...";
     Sources::sources.removeAll();
     ApplicationBase::stop();
 }
 
-void Server::writeLog()const
+void Server::writeLog()
 {
-    lock_guard l(&mutex);
-    ofstream logfile("./Server.log");
-    if(logfile.open(ios_base::out|ios_base::app)){
+    lock_guard<recursive_mutex> l(mutex);
+    ofstream logfile;
+    logfile.open("./Server.log",ios_base::out|ios_base::app);
+    if(logfile.is_open()){
         for(string const& str : log){
             logfile << str << endl;
         }
         logfile.flush();
         logfile.close();
+        log.clear();
     }
-    log.clear();
 }
 
 /**
@@ -146,8 +135,8 @@ void Server::writeLog()const
  */
 void Server::getStatus(json::value *status)const
 {
-    Base::getStatus(status);
-    lock_guard l(&thread_critical_section); //Server inherits Application<T>
+    ApplicationBase::getStatus(status);
+    lock_guard<boost::mutex> l(thread_critical_section); //Server inherits Application<T>
 
     json::value requests(json::empty_array);
     json::array_t &threads(status->get_object().at("threads").get_array());
@@ -158,15 +147,17 @@ void Server::getStatus(json::value *status)const
         }
     }
 
-    if(log.count()){
+    if(distance(log.begin(),log.end())){
         json::value _log(json::empty_array);
         json::array_t &logs(_log.get_array());
         for(string const& str : log){
             logs.push_back(str);
         }
         status->get_object().insert({"log",_log});
-        writeLog();
+        const_cast<Pleg::Server*>(this)->writeLog();
     }
 
     status->get_object().insert({"requests",requests});
 }
+
+} // namespace Pleg

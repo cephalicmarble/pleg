@@ -14,6 +14,7 @@ using namespace tao;
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
+#include <boost/thread/shared_lock_guard.hpp>
 #include <boost/thread/sync_queue.hpp>
 using namespace boost;
 
@@ -24,8 +25,13 @@ mutex Thread::critical_section;
  * @brief Thread::Thread : construct a new thread, to be Pleg::Server::addThread(*,bool start)-ed
  * @param _task string name
  */
-Thread::Thread(string _task) : Thread(),task(_task)
+Thread::Thread(string _task) : m_thread(&Thread::run,this),task(_task)
 {
+}
+
+Thread::Thread(string _task,ThreadWorker *_worker) : m_thread(&Thread::run,this),task(_task)
+{
+    setWorker(_worker);
 }
 
 /**
@@ -43,7 +49,7 @@ void Thread::terminate()
 {
     Debug() << __func__ << this;
     {
-        lock_guard l(&critical_section);
+        lock_guard<mutex> l(critical_section);
         if(terminated)
             return;
         terminated = true;
@@ -85,23 +91,15 @@ bool Thread::event(Event *pevent)
     if(!pevent)
         return false;
     quietDebug() << this << __func__ << pevent->type();
-    if((quint32)pevent->type() > (quint32)Event::Type::first
-            || (quint32)pevent->type() > (quint32)Event::Type::last){
+    if((guint32)pevent->type() > (guint32)Event::Type::first
+            || (guint32)pevent->type() > (guint32)Event::Type::last){
         return false;
     }
-    if((quint32)pevent->type() > (quint32)Event::Type::Thread_first
-            && (quint32)pevent->type() < (quint32)Event::Type::Thread_last){
+    if((guint32)pevent->type() > (guint32)Event::Type::Thread_first
+            && (guint32)pevent->type() < (guint32)Event::Type::Thread_last){
         quietDebug() << pevent->getName();
         switch(pevent->type()){
-        case Event::Type::ThreadMessage:
-        {
-            quietDebug() << pevent->type() << "invocation of" << pevent->getName();
-            Object *target;
-            event_cast<Object>(pevent,&target);
-            target->metaObject()->invokeMethod(target,pevent->getName().c_str(),Qt::DirectConnection);
-            break;
-        }
-        case QSEvent::Type::ThreadShutdown:
+        case Event::Type::ThreadShutdown:
         {
             quietDebug() << pevent->type() << "invocation of" << pevent->getName();
             quit();
@@ -115,7 +113,7 @@ bool Thread::event(Event *pevent)
     }
     //        quietDebug() << "signalling" << pevent << "in" << QThread::currentThread() << "***" << pevent->getName();
     //        event->setAccepted(QMetaMethod::fromSignal(&ThreadWorker::signalEventFilter)
-    //                           .invoke(getWorker(),Qt::DirectConnection,Q_ARG(QObject*,this),Q_ARG(QSEvent*,pevent->clone())));
+    //                           .invoke(getWorker(),Qt::DirectConnection,Q_ARG(QObject*,this),Q_ARG(Event*,pevent->clone())));
     //        quietDebug() << "accepted?" << event->isAccepted();
     return false;
 }
@@ -128,9 +126,9 @@ bool Thread::event(Event *pevent)
  */
 void Thread::run()
 {
-//    lock_guard l(&critical_section);
-//    getWorker()->moveToThread(this);
-//    l.unlock();
+    while(!getWorker() || !getWorker()->critical_section.try_lock()){
+        this_thread::sleep_for(chrono::milliseconds(400));
+    }
     getWorker()->work(nullptr,nullptr);
     ready = true;
     exec();
@@ -141,6 +139,7 @@ void Thread::run()
         worker = nullptr;
     }
     make_event(Event::Type::ThreadRemove,"removeThread",this)->punt();
+    getWorker()->critical_section.unlock();
 }
 
 void Thread::post(Event *event)
@@ -150,14 +149,14 @@ void Thread::post(Event *event)
 
 void Thread::exec()
 {
-    Event *event;
+    Event *pevent;
     while(!deleting && !terminated && !m_thread.interruption_requested()){
         try{
             this_thread::interruption_point();
             {
                 this_thread::disable_interruption di;
-                m_queue.wait_pull(event);
-                event(event);
+                m_queue.wait_pull(pevent);
+                event(pevent);
             }
         }catch(thread_interrupted &ti){
             terminate();
@@ -178,12 +177,13 @@ void ThreadWorker::stop()
 
 recursive_mutex ThreadWorker::critical_section;
 
-ThreadWorker::ThreadWorker(Object *parent = nullptr) : Object(parent)
+ThreadWorker::ThreadWorker(Type _type,Object *parent = nullptr) : Object(parent),type(_type)
 {
 }
 
-ThreadWorker::ThreadWorker(string task) : Object()
+ThreadWorker::ThreadWorker(Type _type,string task) : Object(),type(_type)
 {
+    lock_guard<recursive_mutex> l(critical_section);
     thread = new Thread(task);
     thread->setWorker(this);
 }
@@ -194,8 +194,10 @@ ThreadWorker::ThreadWorker(string task) : Object()
  * Sets worker to this, and moves the worker to the (already created) thread.
  * @param _thread Thread*
  */
-ThreadWorker::ThreadWorker(Thread *_thread) : Object(),thread(_thread)
+ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),thread(_thread),type(_type)
 {
+    lock_guard<recursive_mutex> l(critical_section);
+    thread = _thread;
     thread->setWorker(this);
 }
 
@@ -204,7 +206,6 @@ ThreadWorker::ThreadWorker(Thread *_thread) : Object(),thread(_thread)
  */
 ThreadWorker::~ThreadWorker()
 {
-    thread->removeEventFilter(this);
     thread->worker = nullptr;        
 }
 
@@ -220,15 +221,15 @@ void ThreadWorker::signalTermination()
 void ThreadWorker::report(json::value *obj,ReportType type)const
 {
     auto &map(obj->get_object());
-    map.insert({"task",getThread()->getTask().toStdString()});
+    map.insert({"task",getThread()->getTask()});
     map.insert({"type",string(metaEnum<Type>().toString(this->type))});
-    if(type & QSWorkObject::ReportType::Elapsed){
+    if(type & WorkObject::ReportType::Elapsed){
         map.insert({"elapsed",getThread()->elapsed()});
     }
-    if(type & QSWorkObject::ReportType::Memory){
+    if(type & WorkObject::ReportType::Memory){
         map.insert({"memory",0});
     }
-    if(type & QSWorkObject::ReportType::Jobs){
+    if(type & WorkObject::ReportType::Jobs){
         if(map.end()==map.find("jobs"))
             map.insert({"jobs",json::empty_object});
         for(jobs_type::value_type const& job : jobs){
@@ -243,7 +244,7 @@ void ThreadWorker::report(json::value *obj,ReportType type)const
 
 void ThreadWorker::writeToObject(json::value *obj)const
 {
-    report(obj,QSWorkObject::ReportType::All);
+    report(obj,WorkObject::ReportType::All);
     obj->get_object().insert({"task",getThread()->getTask()});
 }
 
@@ -255,11 +256,11 @@ void ThreadWorker::writeToStream(std::ostream &stream)const
 }
 
 /**
- * @brief operator const char*: for QDebug
+ * @brief operator const char*: for Debug
  */
 Thread::operator const char*()const
 {
-    lock_guard l(&critical_section);
+    lock_guard<mutex> l(critical_section);
     static char *buf;
     if(buf)free(buf);
     std::stringstream ss;
@@ -275,19 +276,8 @@ Thread::operator const char*()const
  */
 std::ostream &operator<<(std::ostream &stream,const Thread &rel)
 {
+    stream << rel.getBoostThread().get_id();
     rel.getWorker()->writeToStream(stream);
-    return stream;
-}
-
-/**
- * @brief operator << : stream operator
- * @param stream QDebug&
- * @param rhs Thread const&
- * @return QDebug&
- */
-QDebug &operator<<(QDebug &stream,const Thread &rhs)
-{
-    stream << string(rhs);
     return stream;
 }
 

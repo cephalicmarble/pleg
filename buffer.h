@@ -17,6 +17,8 @@ using namespace std;
 #include "relevance.h"
 #include "mutexcall.h"
 #include "exception.h"
+using namespace drumlin;
+using namespace Pleg;
 #include "glib.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -27,6 +29,8 @@ using namespace std;
 /**
  * Forward declarations
  */
+namespace Pleg {
+
 namespace Sources {
     class Source;
     class GStreamerSampleSource;
@@ -75,6 +79,7 @@ public:
     int registerSource(Sources::Source *source);
     int unregisterSource(Sources::Source *source);
     int unregisterSources(int);
+    const heap_t *getHeap(const Sources::Source *source);
     void *alloc(Buffers::SourceBuffer *buffer);
     int free(Buffers::SourceBuffer *buffer);
     int getStatus(json::value *status);
@@ -83,6 +88,7 @@ public:
 typedef mutex_call_1<Allocator,int,Sources::Source*> registerSource_t;
 typedef mutex_call_1<Allocator,int,Sources::Source*> unregisterSource_t;
 typedef mutex_call_1<Allocator,int,int> unregisterSources_t;
+typedef mutex_call_1<Allocator,const heap_t*,const Sources::Source*> getHeap_t;
 typedef mutex_call_1<Allocator,void*,SourceBuffer*> alloc_t;
 typedef mutex_call_1<Allocator,int,SourceBuffer*> free_t;
 typedef mutex_call_1<Allocator,int,json::value*> getAllocatorStatus_t;
@@ -90,27 +96,12 @@ typedef mutex_call_1<Allocator,int,json::value*> getAllocatorStatus_t;
 extern registerSource_t registerSource;
 extern unregisterSource_t unregisterSource;
 extern unregisterSources_t unregisterSources;
+extern getHeap_t getHeap;
 extern alloc_t alloc;
 extern free_t free;
 extern getAllocatorStatus_t getAllocatorStatus;
 
 extern Allocator allocator;
-
-/**
- * @brief Allocator : thread-safe heap monster for BufferCache
- * template<class CPS>
- * @return CPS::Return
- */
-template <class CPS>
-typename CPS::Return Allocator(CPS cps)
-{
-    while(!allocator.mutex.try_lock()){
-        this_thread::yield();
-    }
-    typename CPS::Return ret(cps(&allocator));
-    allocator.mutex.unlock();
-    return ret;
-}
 
 /**
  * @brief The Buffer class : represents a chunk of sample
@@ -152,8 +143,9 @@ public:
     const T *data()const{ return (const T*)m_data; }
     guint32 length()const;
 
+    posix_time::ptime advanceClock();
     virtual bool isDead()const;
-    virtual operator tring()const;
+    virtual operator string()const;
     virtual operator byte_array()const;
 
     friend class Sources::GStreamerSampleSource;
@@ -248,6 +240,24 @@ extern getCacheStatus_t getCacheStatus;
 
 extern BufferCache cache;
 
+} // namespace Buffers;
+
+/**
+ * @brief Allocator : thread-safe heap monster for BufferCache
+ * template<class CPS>
+ * @return CPS::Return
+ */
+template <class CPS>
+typename CPS::Return Allocator(CPS cps)
+{
+    while(!Buffers::allocator.mutex.try_lock()){
+        this_thread::yield();
+    }
+    typename CPS::Return ret(cps(&Buffers::allocator));
+    Buffers::allocator.mutex.unlock();
+    return ret;
+}
+
 /**
  * @brief Cache : thread-safe receiver for BufferCache
  * template<class CPS>
@@ -256,25 +266,25 @@ extern BufferCache cache;
 template <class CPS>
 typename CPS::Return Cache(CPS cps)
 {
-    while(!cache.m_mutex.try_lock()){
+    while(!Buffers::cache.m_mutex.try_lock()){
         this_thread::yield();
     }
-    typename CPS::Return ret(cps(&cache));
-    cache.m_mutex.unlock();
+    typename CPS::Return ret(cps(&Buffers::cache));
+    Buffers::cache.m_mutex.unlock();
     return ret;
 }
 
 template <class MemFun>
 typename MemFun::result_type Cache(MemFun fun,typename MemFun::second_argument_type &arg)
 {
-    while(!cache.m_mutex.try_lock()){
-        QThread::yieldCurrentThread();
+    while(!Buffers::cache.m_mutex.try_lock()){
+        this_thread::yield();
     }
-    typename MemFun::result_type ret(fun(cache,arg));
-    cache.m_mutex.unlock();
+    typename MemFun::result_type ret(fun(Buffers::cache,arg));
+    Buffers::cache.m_mutex.unlock();
     return ret;
 }
 
-}
+} // namespace Pleg;
 
 #endif // BUFFERCACHE_H

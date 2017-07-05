@@ -15,10 +15,6 @@ namespace Pleg {
 class Writer;
 class Response;
 
-}
-
-using namespace Pleg;
-
 namespace Transforms {
 
 /**
@@ -31,7 +27,7 @@ class Transform :
     Response *response;
     std::unique_ptr<Writer> writer;
 public:
-    Transform(Thread *_thread,Response *parent) : ThreadWorker(_thread),Buffers::Acceptor() {
+    Transform(drumlin::Thread *_thread,Response *parent) : ThreadWorker(ThreadType_transform,_thread),Buffers::Acceptor() {
         response = parent;
     }
     void setWriter(Writer *_writer){ writer.reset(_writer); }
@@ -42,8 +38,8 @@ public:
      * @param stream std::ostream&
      */
     virtual void writeToStream(std::ostream &stream)const=0;
-    virtual void getStatus(json::value *status)const{}
-    virtual void report(json::value *obj,ReportType type)const{}
+    virtual void getStatus(json::value *)const{}
+    virtual void report(json::value *,ReportType)const{}
 
     virtual void error(const char*);
 
@@ -54,13 +50,10 @@ class Passthrough :
     public Transform
 {
 public:
-    Passthrough(Thread *_thread,Response *parent = 0):Transform(_thread,parent){
-        type = transform;
-    }
+    Passthrough(drumlin::Thread *_thread,Response *parent = 0):Transform(_thread,parent){}
     virtual void accept(const Buffers::Buffer *buffer);
     virtual void flush(const Buffers::Buffer *buffer);
-public slots:
-    virtual void run(QObject *obj,Event *event);
+    virtual void run(Object *obj,Event *event);
     virtual void writeToStream(std::ostream &stream)const{
         stream << "OK";
     }
@@ -69,6 +62,8 @@ public slots:
     }
 };
 
-}
+} // namespace Transforms
+
+} // namespace Pleg
 
 #endif // TRANSFORM_H

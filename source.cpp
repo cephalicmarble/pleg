@@ -9,7 +9,10 @@ using namespace boost;
 #include "gstreamer.h"
 #include "request.h"
 #include "files.h"
+#include "jsonconfig.h"
 #include <math.h>
+
+namespace Pleg {
 
 namespace Sources {
 
@@ -19,7 +22,7 @@ namespace Sources {
 Source::~Source()
 {
     const Relevance rel(std::move(Relevance::fromSource(this)));
-    Buffers::Cache(CPS_call_void(Buffers::clearRelevantBuffers,&rel));
+    Cache(CPS_call_void(Buffers::clearRelevantBuffers,&rel));
 }
 
 /**
@@ -35,28 +38,30 @@ void Source::writeNext()
     writeNext(const_cast<void*>(buf->data<void>()),buf->length());
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
+    Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
 
-void Source::report(json::value *obj,ReportType type)const
+void Source::writeToFile(Request *req,string rpath)
+{
+    Files::files.add(req->getRelevanceRef(),rpath);
+}
+
+void WorkSource::report(json::value *obj,ReportType type)const
 {
     obj->get_object().insert({"ticks",tick});
     if(type & WorkObject::ReportType::Memory){
-        obj->get_object().insert({"allocated",memory});
+        const Buffers::heap_t *heap(Allocator(CPS_call_void(Buffers::getHeap,dynamic_cast<const Pleg::Sources::Source*>(this))));
+        obj->get_object().insert({"allocated",heap->allocated * heap->size});
+        obj->get_object().insert({"reserved",heap->max});
     }
-}
-
-void Source::writeToFile(Request *req,tring rpath)
-{
-    Files::files.add(req->getRelevanceRef(),rpath);
 }
 
 /**
  * @brief MockSource::MockSource : default constructor
  */
-MockSource::MockSource() : Base("mock")
+MockSource::MockSource() : Base("mock"),timer(drumlin::io_service)
 {
-    type = Mock;
+    type = Source_Mock;
 }
 
 /**
@@ -76,12 +81,12 @@ void MockSource::timedOut(const system::error_code& e)
 void MockSource::start()
 {
     timer.expires_from_now(posix_time::seconds(1));
-    timer.async_wait(boost::bind(timedOut,asio::placeholders::error));
+    timer.async_wait(boost::bind(&MockSource::timedOut,this,asio::placeholders::error));
 }
 
 void MockSource::stop()
 {
-    timer.expires_from_now(posix_time::microsec_clock::universal_time());
+    timer.cancel();
 }
 
 /**
@@ -90,22 +95,21 @@ void MockSource::stop()
  * @param len quint32
  * @return quint32 bytesWritten
  */
-void MockSource::writeNext(void *buf,quint32 len)
+void MockSource::writeNext(void *buf,guint32)
 {
     (*(guint64*)buf) = round(100.0*(1.0*rand()/RAND_MAX));
 }
 
 GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize)
-    :GStreamerSourceBase(_name),GStreamer::GStreamerSrc(gst),m_maxSampleSize(maxSampleSize)
+    :GStreamerSourceBase(_name),src(gst,_name),m_maxSampleSize(maxSampleSize)
 {
-    LOCK
-    type = Gstreamer;
+    type = Source_Gstreamer;
     Config::JsonConfig gst_config("./gstreamer.json");
     string key("/pipes/");
-    meta = gst_config.at(key+getName());
+    meta = &gst_config.at(key+src.getName());
 }
 
-void GStreamerSampleSource::writeNextSample(GObject *sample)
+void GStreamerSampleSource::writeNextSample(GstSample *sample)
 {
     if(!sample)
         return;
@@ -121,7 +125,7 @@ void GStreamerSampleSource::writeNextSample(GObject *sample)
 
 guint32 GStreamerSampleSource::lengthData()
 {
-    return len;
+    return src.len;
 }
 
 guint32 GStreamerSampleSource::getTTL()
@@ -131,13 +135,12 @@ guint32 GStreamerSampleSource::getTTL()
 
 guint32 GStreamerSampleSource::getTau()
 {
-    return floor(1000/src->fps);
+    return floor(1000/src.fps);
 }
 
 size_t GStreamerSampleSource::getAlign()
 {
-    guint32 tmp[sizeT()];
-    return alignof(tmp);
+    return alignof(guint32);
 }
 
 guint32 GStreamerSampleSource::sizeT()
@@ -157,18 +160,18 @@ void GStreamerSampleSource::writeNext(void *mem,guint32 len)
         delete buf;
         return;
     }
-    buf->m_len = qMin(len,buf->m_len);
+    buf->m_len = std::min(len,buf->m_len);
     memcpy(buf->m_data,mem,buf->m_len);
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
+    Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
 
 void GStreamerSampleSource::writeToFile(Request *req,string rpath)
 {
     req->getRelevance()->arguments.insert({"filepath",rpath});
     Relevance rel(req->getRelevanceRef());
-    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+    threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
     if(0==std::distance(threads.begin(),threads.end())){
         return;
     }
@@ -190,42 +193,41 @@ void GStreamerSampleSource::writeToFile(Request *req,string rpath)
 }
 
 GStreamerOffsetSource::GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name)
-    :GStreamerSourceBase(_name),GStreamer::GStreamerStreamSource(gst)
+    :GStreamerSourceBase(_name),src(gst,_name)
 {
-    LOCK
-    type = Offset;
+    type = Source_Offset;
 }
 
-void GStreamerOffsetSource::writeNextSample(GObject *sample)
+void GStreamerOffsetSource::writeNextSample(GstSample *sample)
 {
-    quint64 offset(src->getTick());
+    guint64 offset(src.getTick());
     writeNext(&offset,sizeof(offset));
-    GStreamer::GStreamerStreamSource::writeFrame(sample);
+    src.writeFrame(sample);
 }
 
-quint32 GStreamerOffsetSource::lengthData()
+guint32 GStreamerOffsetSource::lengthData()
 {
-    return sizeof(quint64);
+    return sizeof(guint64);
 }
 
-quint32 GStreamerOffsetSource::getTTL()
+guint32 GStreamerOffsetSource::getTTL()
 {
     return 500;
 }
 
-quint32 GStreamerOffsetSource::getTau()
+guint32 GStreamerOffsetSource::getTau()
 {
-    return floor(1000/src->getSrc()->fps);
+    return floor(1000/src.fps);
 }
 
 size_t GStreamerOffsetSource::getAlign()
 {
-    return alignof(quint64);
+    return alignof(guint64);
 }
 
-quint32 GStreamerOffsetSource::sizeT()
+guint32 GStreamerOffsetSource::sizeT()
 {
-    return sizeof(quint64);
+    return sizeof(guint64);
 }
 
 uuids::uuid GStreamerOffsetSource::getUuid()
@@ -233,27 +235,25 @@ uuids::uuid GStreamerOffsetSource::getUuid()
     return Pleg::string_gen("gstreamer-offset");
 }
 
-void GStreamerOffsetSource::writeNext(void *mem,quint32 len)
+void GStreamerOffsetSource::writeNext(void *mem,guint32 len)
 {
     Buffers::SourceBuffer *buf(new Buffers::SourceBuffer(this));
     if(!buf->isValid()){
         delete buf;
         return;
     }
-    buf->m_len = qMin(len,buf->m_len);
+    buf->m_len = std::min(len,buf->m_len);
     memcpy(buf->m_data,mem,buf->m_len);
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
-    Buffers::Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
+    Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
-
-#endif
 
 sources_type sources;
 
 void getStatus(json::value *status)
 {
-    QMutexLocker ml(&Sources::sources.mutex);
+    lock_guard<recursive_mutex> l(Sources::sources.mutex);
     json::value array_sources(json::empty_array);
     int index = 0;
     for(Sources::sources_type::value_type const& source : Sources::sources){
@@ -267,10 +267,11 @@ void getStatus(json::value *status)
         }else{
             obj.get_object().insert({"actions","chart,record"});
         }
-        source.second->report(&obj,Source::ReportType::All);
         array_sources.get_array().push_back(obj);
     }
     status->get_object().insert({"sources",array_sources});
 }
 
-}
+} // namespace Source
+
+} // namespace Pleg

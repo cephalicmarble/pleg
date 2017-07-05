@@ -18,6 +18,8 @@ using namespace drumlin;
 
 /* Many thanks for the much-edited cap_gstreamer.cpp example, opencv (cephalicmarble@hotmail.com) */
 
+namespace Pleg {
+
 namespace GStreamer {
 
 void toFraction(double decimal, double &numerator, double &denominator);
@@ -48,16 +50,18 @@ void toFraction(double decimal, double &numerator, double &denominator)
 }
 
 boost::mutex bus_mutex;
+#define BUSLOCK lock_guard<boost::mutex> lb(bus_mutex)
+
 gboolean bus_func(GstBus * bus, GstMessage * msg, gpointer user_data)
 {
-    lock_guard l(&bus_mutex);
+    BUSLOCK;
     GStreamerPipe *gp(dynamic_cast<GStreamerPipe*>(static_cast<Object*>(user_data)));
     if(!gp)
         return false;
     return gp->handleMessage(bus,msg);
 }
 
-GStreamerPipe::GStreamerPipe(GStreamer *gst):WorkObject(),gstreamer(gst)
+GStreamerPipe::GStreamerPipe(GStreamer *gst,string const& _name):WorkObject(),gstreamer(gst),name(_name)
 {
     pipeline = 0;
     element = 0;
@@ -65,11 +69,11 @@ GStreamerPipe::GStreamerPipe(GStreamer *gst):WorkObject(),gstreamer(gst)
 }
 
 recursive_mutex mutex;
-#define LOCK lock_guard l(&GStreamer::mutex);
+#define LOCK lock_guard<recursive_mutex> l(mutex)
 
 GStreamerPipe::~GStreamerPipe()
 {
-    LOCK
+    LOCK;
     Debug() << this << __func__;
     close();
     if(!getGStreamer()->isDeleting())
@@ -78,8 +82,8 @@ GStreamerPipe::~GStreamerPipe()
 
 void GStreamerPipe::handleMessages()
 {
-    LOCK
-    lock_guard l2(&bus_mutex);
+    LOCK;
+    BUSLOCK;
     GstBus *bus = gst_element_get_bus(pipeline);
     GstMessage *msg;
     while(gst_bus_have_pending(bus)) {
@@ -89,9 +93,9 @@ void GStreamerPipe::handleMessages()
     }
 }
 
-gboolean GStreamerPipe::handleMessage(GstBus *bus, GstMessage *msg)
+gboolean GStreamerPipe::handleMessage(GstBus *, GstMessage *msg)
 {
-    LOCK
+    LOCK;
     GError *err = NULL;
     gchar *debug = NULL;
     GstStreamStatusType tp;
@@ -99,7 +103,7 @@ gboolean GStreamerPipe::handleMessage(GstBus *bus, GstMessage *msg)
 
     if(gst_is_missing_plugin_message(msg))
     {
-        qDebug() << "GStreamer: your gstreamer installation is missing a required plugin";
+        Debug() << "GStreamer: your gstreamer installation is missing a required plugin";
     }
     else
     {
@@ -142,7 +146,7 @@ gboolean GStreamerPipe::handleMessage(GstBus *bus, GstMessage *msg)
  */
 void GStreamerPipe::close()
 {
-    LOCK
+    LOCK;
     if(pipeline) {
         gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_NULL);
         gst_object_unref(GST_OBJECT(pipeline));
@@ -167,7 +171,7 @@ GstState GStreamerPipe::getState()
  */
 bool GStreamerPipe::isPlaying()
 {
-    LOCK
+    LOCK;
     GstState current, pending;
     GstClockTime timeout = 5*GST_SECOND;
     if(!pipeline){
@@ -185,7 +189,7 @@ bool GStreamerPipe::isPlaying()
 
 void GStreamerPipe::stateChange(GstState _state = GST_STATE_VOID_PENDING)
 {
-    LOCK
+    LOCK;
     GstState state = GST_STATE_NULL,pending = GST_STATE_NULL;
     GstStateChangeReturn status = gst_element_get_state(pipeline, &state, NULL, GST_REASONABLE_WAIT);
     if(state == _state)return;
@@ -210,7 +214,7 @@ void GStreamerPipe::stateChange(GstState _state = GST_STATE_VOID_PENDING)
  */
 void GStreamerPipe::start()
 {
-    LOCK
+    LOCK;
     Debug() << this << __func__;
 
     stateChange(GST_STATE_PLAYING);
@@ -227,7 +231,7 @@ void GStreamerPipe::start()
  */
 void GStreamerPipe::stop()
 {
-    LOCK
+    LOCK;
     Debug() << this << __func__;
     stateChange();
 }
@@ -238,7 +242,7 @@ void GStreamerPipe::stop()
  */
 void GStreamerPipe::restart()
 {
-    LOCK
+    LOCK;
     stop();
     start();
 }
@@ -256,7 +260,7 @@ void GStreamerPipe::restart()
  */
 bool GStreamerPipe::open( std::string const& filename )
 {
-    LOCK
+    LOCK;
     pipestr = filename;
     Debug() << this << __func__;
 
@@ -329,21 +333,21 @@ bool GStreamerPipe::open( std::string const& filename )
     return true;
 }
 
-void GStreamerPipe::report(json::value *_obj,ReportType type)const
+void GStreamerPipe::report(json::value *_obj,ReportType)const
 {
-    LOCK
+    LOCK;
     auto &obj(_obj->get_object());
     obj.insert({"pipeline",pipestr});
     if(nullptr == pipeline)return;
     GstState status;
     gst_element_get_state(pipeline, &status, NULL, GST_REASONABLE_WAIT);
-    obj.insert({"state",QMetaEnum::fromType<GStreamerPipe::State>().valueToKey(status)});
+    obj.insert({"state",metaEnum<GStreamerPipe::State>().toString((GStreamerPipe::State)status)});
     obj.insert({"frames",frames});
 }
 
-GStreamerSrc::GStreamerSrc(GStreamer *gst):Object(0),GStreamerPipe(gst)
+GStreamerSrc::GStreamerSrc(GStreamer *gst, string const& name):Object(0),GStreamerPipe(gst,name)
 {
-    LOCK
+    LOCK;
     duration = -1;
     width = -1;
     height = -1;
@@ -353,48 +357,48 @@ GStreamerSrc::GStreamerSrc(GStreamer *gst):Object(0),GStreamerPipe(gst)
     callbacks.new_sample = &new_sample_callback;
 }
 
-#define CALLBACK_LOCK static mutex s_mutex;lock_guard l(&mutex);
+#define CALLBACK_LOCK static boost::mutex s_mutex;lock_guard<boost::mutex> l(s_mutex)
 void eos_callback(GstAppSink *,gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     static_cast<GStreamerSrc*>(user_data)->eos();
 }
 GstFlowReturn new_preroll_callback(GstAppSink *,gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     return static_cast<GStreamerSrc*>(user_data)->new_preroll();
 }
 GstFlowReturn new_sample_callback(GstAppSink *,gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     return static_cast<GStreamerSrc*>(user_data)->new_sample();
 }
 
-void need_data_callback(GstAppSrc *src, guint length, gpointer user_data)
+void need_data_callback(GstAppSrc *, guint length, gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     static_cast<GStreamerSink*>(user_data)->need_data(length);
 }
-void enough_data_callback(GstAppSrc *src, gpointer user_data)
+void enough_data_callback(GstAppSrc *, gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     static_cast<GStreamerSink*>(user_data)->enough_data();
 }
-gboolean seek_data_callback(GstAppSrc *src, guint64 offset, gpointer user_data)
+gboolean seek_data_callback(GstAppSrc *, guint64 offset, gpointer user_data)
 {
-    CALLBACK_LOCK
+    CALLBACK_LOCK;
     return static_cast<GStreamerSink*>(user_data)->seek_data(offset);
 }
 
 GstFlowReturn GStreamerSrc::new_sample()
 {
     frames++;
-    grabFrame();
+    return grabFrame()?GST_FLOW_OK:GST_FLOW_ERROR;
 }
 
 bool GStreamerSrc::open(std::string const& _pipeline)
 {
-    LOCK
+    LOCK;
     if(!GStreamerPipe::open(_pipeline)){
         return false;
     }
@@ -420,7 +424,7 @@ bool GStreamerSrc::open(std::string const& _pipeline)
  */
 bool GStreamerSrc::grabFrame()
 {
-    LOCK
+    LOCK;
     if(!pipeline){
         Critical() << "unexpectedly null pipeline";
         return false;
@@ -431,7 +435,7 @@ bool GStreamerSrc::grabFrame()
     GstSample *sample = 0;
     gst_element_get_state(pipeline, &state, &pending, GST_REASONABLE_WAIT);
     do{
-        if(state != (GstState)GStreamerPipe::StatePlaying){
+        if(state != (GstState)StatePlaying){
             if(!sample)
                sample = gst_app_sink_pull_preroll(GST_APP_SINK(element));
             stateChange(GST_STATE_PLAYING);
@@ -440,7 +444,7 @@ bool GStreamerSrc::grabFrame()
                 sample = gst_app_sink_pull_sample(GST_APP_SINK(element));
         }
         gst_element_get_state(pipeline, &state, &pending, 0.4 * 1000000000.);
-    }while(!sample || state != (GstState)GStreamerPipe::StatePlaying);
+    }while(!sample || state != (GstState)StatePlaying);
 
     if(!sample){
         Critical() << "unexpectedly null sample.";
@@ -491,10 +495,10 @@ bool GStreamerSrc::grabFrame()
     return true;
 }
 
-GStreamerSink::GStreamerSink(GStreamer *gst)
-    :Object(0),GStreamerPipe(gst)
+GStreamerSink::GStreamerSink(GStreamer *gst,string const &name)
+    :Object(0),GStreamerPipe(gst,name)
 {
-    LOCK
+    LOCK;
     callbacks.need_data = &need_data_callback;
     callbacks.enough_data = &enough_data_callback;
     callbacks.seek_data = &seek_data_callback;
@@ -502,7 +506,7 @@ GStreamerSink::GStreamerSink(GStreamer *gst)
 
 bool GStreamerSink::open( std::string const& _pipeline )
 {
-    LOCK
+    LOCK;
     if(!GStreamerPipe::open(_pipeline)){
         return false;
     }
@@ -510,7 +514,7 @@ bool GStreamerSink::open( std::string const& _pipeline )
     gst_app_src_set_emit_signals (GST_APP_SRC(element), 0);
     gst_app_src_set_callbacks(GST_APP_SRC(element),&callbacks,this,NULL);
 
-    qDebug() << __func__ << _pipeline.c_str();
+    Debug() << __func__ << _pipeline.c_str();
 
     handleMessages();
 
@@ -524,12 +528,12 @@ bool GStreamerSink::open( std::string const& _pipeline )
  */
 void GStreamerSink::close()
 {
-    LOCK
+    LOCK;
     while(pipeline)
     {
         if (gst_app_src_end_of_stream(GST_APP_SRC(element)) != GST_FLOW_OK)
         {
-            qDebug() << "Cannot send EOS to GStreamer pipeline";
+            Debug() << "Cannot send EOS to GStreamer pipeline";
             break;
         }
 
@@ -546,7 +550,7 @@ void GStreamerSink::close()
             }
             if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR)
             {
-                qDebug() << "Error during VideoWriter finalization";
+                Debug() << "Error during VideoWriter finalization";
                 break;
             }
             break;
@@ -573,7 +577,7 @@ void GStreamerSink::close()
  */
 const char* GStreamerSink::filenameToMimetype(const char *filename)
 {
-    LOCK
+    LOCK;
     //get extension
     const char *ext = strrchr(filename, '.');
     if(!ext || ext == filename) return NULL;
@@ -613,7 +617,7 @@ const char* GStreamerSink::filenameToMimetype(const char *filename)
 
 void GStreamerSink::stop()
 {
-    LOCK
+    LOCK;
     close();
 }
 
@@ -625,9 +629,9 @@ void GStreamerSink::stop()
  * The timestamp for the buffer is generated from the framerate set in open
  * and ensures a smooth video
  */
-void GStreamerStreamSource::writeFrame( GObject *sample )
+void GStreamerStreamSource::writeFrame( GstSample *sample )
 {
-    LOCK
+    LOCK;
     if(!going)
         return;
 //    if(0==frames)
@@ -668,25 +672,25 @@ void GStreamerStreamSource::writeFrame( GObject *sample )
     }
 }
 
-GStreamerStreamSource::GStreamerStreamSource(GStreamer *gst):GStreamerSink(gst),tick(0)
+GStreamerStreamSource::GStreamerStreamSource(GStreamer *gst,string const &name):GStreamerSink(gst,name),tick(0)
 {
-    LOCK
+    LOCK;
 }
 
-void GStreamerStreamSource::nextSample(GStreamerSrc *that,GstSample *sample)
+void GStreamerStreamSource::nextSample(GStreamerSrc *,GstSample *sample)
 {
     writeFrame(sample);
 }
 
 void GStreamerStreamSource::args(Relevance::arguments_type const& args)
 {
-    LOCK
+    LOCK;
     copy(args.begin(),args.end(),inserter(m_args,m_args.begin()));
 }
 
 bool GStreamerStreamSource::open(std::string const& filename)
 {
-    LOCK
+    LOCK;
     string pipeline = filename;
     for(auto & arg : m_args){
         string needle(arg.first);
@@ -698,13 +702,13 @@ bool GStreamerStreamSource::open(std::string const& filename)
 
 void GStreamerStreamSource::report(json::value *_obj,ReportType type)const
 {
-    LOCK
+    LOCK;
     GStreamerSink::report(_obj,type);
     json::value::object_t &obj(_obj->get_object());
     if(m_args.end()!=m_args.find("ip")){
-        obj.insert({"udp",(m_args.at("ip")+":"+m_args.at("port")).toStdString()});
+        obj.insert({"udp",m_args.at("ip")+":"+m_args.at("port")});
     }else{
-        obj.insert({"filepath",filepath.toStdString()});
+        obj.insert({"filepath",m_args.at("filepath")});
     }
     obj.insert({"ticks",tick});
 }
@@ -720,8 +724,8 @@ void GStreamerStreamSource::enough_data()
 
 void GStreamerStreamSource::start()
 {
-    LOCK
-    GstPad *source_pad = gst_element_get_static_pad(GST_ELEMENT(src->element),"sink");
+    LOCK;
+    GstPad *source_pad = gst_element_get_static_pad(GST_ELEMENT(element),"sink");
     if(!source_pad){
         handleMessages();
         return;
@@ -742,19 +746,12 @@ void GStreamerStreamSource::stop()
     going = false;
 }
 
-/**
- * @brief GStreamer::run : runnable function
- */
-void GStreamer::run(QObject *obj,Event *event)
-{
-}
-
 void GStreamer::nextSample(GStreamerSrc *that,GstSample *sample)
 {
-    LOCK
+    LOCK;
     for(auto & connection : connections){
         if(connection.first == that){
-            connection.second->nextSample(that,sample);
+            connection.second->writeNextSample(sample);
         }
     }
 }
@@ -764,8 +761,8 @@ void GStreamer::nextSample(GStreamerSrc *that,GstSample *sample)
  */
 void GStreamer::shutdown()
 {
-    LOCK
-    qDebug() << this << __func__;
+    LOCK;
+    Debug() << this << __func__;
     connections.clear();
     for(jobs_type::value_type const& obj : jobs){
         obj.second->stop();
@@ -778,20 +775,20 @@ void GStreamer::shutdown()
  * @param obj QObject*
  * @param event Event*
  */
-bool GStreamer::event(QEvent *event)
+bool GStreamer::event(Event *pevent)
 {
-    Event *pevent = dynamic_cast<Event*>(event);
-    if(!pevent)
-        return false;
     quietDebug() << this << __func__ << pevent->type();
-    if((quint32)pevent->type() > (quint32)Event::Type::first
-            && (quint32)pevent->type() < (quint32)Event::Type::last){
+    if((guint32)pevent->type() < (guint32)Event::Type::first
+            || (guint32)pevent->type() > (guint32)Event::Type::last){
+        return false;
+    }
+    do{
         switch(pevent->type()){
         case Event::Type::GstConnectDevices:
         {
             Config::JsonConfig gst_config("./gstreamer.json");
-            json::value &pipes(gst_config["/pipes"]);
-            for(auto it : pipes.get_object()){
+            json::object_t &pipes(gst_config["/pipes"].get_object());
+            for(auto it : pipes){
                 addPipeline(it.second[string("pipeline")].get_string(),it.first,it.second[string("maxSampleSize")].get_unsigned());
             }
             break;
@@ -801,8 +798,8 @@ bool GStreamer::event(QEvent *event)
             Config::JsonConfig gst_config("./gstreamer.json");
             Request *request;
             pod_event_cast(pevent,&request);
-            Relevance &rel(request->getRelevanceRef());
-            json::value &pipe(config.at((QString("/pipes/")+rel.arguments.at("name"))));
+            Relevance const& rel(request->getRelevanceRef());
+            json::value &pipe(gst_config.at(string("/pipes/")+rel.arguments.at("name")));
             addPipeline(pipe[string("pipeline")].get_string(),rel.arguments.at("name"),pipe[string("maxSampleSize")].get_unsigned());
             make_event(pevent->type(),"open")->send(request->getThread());
             break;
@@ -813,7 +810,7 @@ bool GStreamer::event(QEvent *event)
             Config::JsonConfig gst_config("./gstreamer.json");
             Request *request;
             pod_event_cast(pevent,&request);
-            Relevance &rel(request->getRelevanceRef());
+            Relevance const& rel(request->getRelevanceRef());
             string suffix = pevent->type()==GstStreamPort?"tee":"file";
             string pipepath = string("/pipes/")+rel.arguments.at("name")+"/"+suffix;
             std::string pipeline = gst_config[pipepath].get_string();
@@ -826,31 +823,20 @@ bool GStreamer::event(QEvent *event)
         }
         case Event::Type::GstStreamEnd:
         {
-            delete event_cast<QObject>(pevent)->getPointer();
+            delete event_cast<Object>(pevent)->getPointer();
             break;
         }
         case Event::Type::GstRemoveJob:
         {
             if(!isDeleting()){
-                LOCK
-                lock_guard l2(&getThread()->critical_section);
+                LOCK;
+                lock_guard<boost::mutex> l2(getThread()->critical_section);
                 jobs.remove(pod_event_cast<std::string>(pevent)->getVal().c_str());
             }
             break;
         }
-        case Event::Type::ControlStartStream:
-        {
-            tring pipeline = pod_event_cast<tring>(pevent)->getVal();
-            GStreamer::GStreamerSrc *stream(addVideoStream(pipeline.toStdString().c_str()));
-            if(!stream){
-                quietDebug() << "FAIL!";
-            }else{
-                make_event(Event::Type::ControlStreamStarted,"videostream",stream)->punt();
-            }
-            break;
-        }
         default:
-            qDebug() << __func__ << "Unimplemented";
+            Debug() << __func__ << "Unimplemented";
             return false;
         }
         return true;
@@ -864,50 +850,52 @@ void GStreamer::GStreamer::getStatus(json::value *status)const
     json::value array(json::empty_array);
     for(typename ThreadWorker::jobs_type::value_type const& pipeline : jobs){
         json::value obj(json::empty_object);
-        GStreamer::GStreamerPipe *pipe(dynamic_cast<GStreamer::GStreamerPipe*>(pipeline.second));
+        GStreamerPipe *pipe(dynamic_cast<GStreamerPipe*>(pipeline.second));
         obj.get_object().insert({"state",(guint32)pipe->getState()});
+        array.get_array().push_back(obj);
     }
+    status->get_object().insert({"gstreamer",array});
 }
 
-GStreamer::GStreamerSrc *GStreamer::addPipeline(std::string const& pipeline,std::string const& name,guint32 maxSampleSize)
+Sources::GStreamerSampleSource *GStreamer::addPipeline(std::string const& pipeline,std::string const& name,guint32 maxSampleSize)
 {
-    LOCK
+    LOCK;
     Sources::GStreamerSampleSource *source = new Sources::GStreamerSampleSource(this,name,maxSampleSize);
     Debug() << __func__ << name.c_str() << ":" << pipeline.c_str();
-    if(!source->open(pipeline)) {
+    if(!source->src.open(pipeline)) {
         delete source;
         return nullptr;
     }
-    jobs.add(name,source->src);
-    source->grabFrame();           //preroll / alloc
-    Sources::sources.add(name,source);  //register
-    source->start();               //signals and slots
+    jobs.add(name,source);
+    source->src.grabFrame();           //preroll / alloc
+    Sources::sources.add(name,source); //register
+    source->src.start();
     Debug() << source << "added.";
     return source;
 }
 
-GStreamer::GStreamerSink *GStreamer::addStream(Relevance::arguments_type const& args,string const& pipeline,string const& name)
+Sources::GStreamerOffsetSource *GStreamer::addStream(Relevance::arguments_type const& args,string const& pipeline,string const& name)
 {
-    LOCK
+    LOCK;
     string _source(args.at("source"));
     Sources::GStreamerSampleSource *source(
         Sources::sources.fromString<Sources::GStreamerSampleSource>(_source));
     if(!source)
         return nullptr;
-    GStreamer::GStreamerStreamSource *stream = new GStreamer::GStreamerStreamSource();
-    stream->args(args);
+    Sources::GStreamerOffsetSource *offset = new Sources::GStreamerOffsetSource(this,name);
+    offset->src.args(args);
     Debug() << __func__ << _source << ":" << pipeline.c_str();
-    if(!stream->open(pipeline.c_str())){
-        delete stream;
+    if(!offset->src.open(pipeline.c_str())){
+        delete offset;
         return nullptr;
     }
-    jobs.add(name,stream);
-    stream->start();
-    connections.insert({source,stream});
-    Debug() << stream << "added.";
-    return stream;
+    jobs.add(name,offset);
+    offset->src.start();
+    connections.insert({&source->src,offset});
+    Debug() << offset << "added.";
+    return offset;
 }
 
-}
+} // namespace GStreamer
 
-#endif // GSTREAMER
+} // namespace Pleg

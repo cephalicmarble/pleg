@@ -8,6 +8,8 @@ using namespace tao;
 
 namespace drumlin {
 
+namespace Tracer {
+
 class Tracer;
 
 extern Tracer *tracer;
@@ -50,6 +52,8 @@ public:
 #define tracepoint
 #define tracepoint_(n)
 #endif
+} // namespace Tracer
+
 } // namespace drumlin
 
 #endif // CURSOR_H_

@@ -5,6 +5,7 @@
 #include <string>
 #include <functional>
 using namespace std;
+#include "glib.h"
 #include "metatypes.h"
 #include "object.h"
 #include "thread.h"
@@ -12,72 +13,13 @@ using namespace std;
 #include "application.h"
 using namespace drumlin;
 
-namespace Pleg {
+namespace drumlin {
 
 class Thread;
 
 extern bool quietEvents;
 #define quietDebug() if(!quietEvents)Debug()
 void setQuietEvents(bool keepQuiet);
-
-/**
- * @brief The Type enum from QEvent::Type::User to QEvent::Type::MaxUser
- */
-#define EventTypes (None,\
-    first,\
-    Request_first,\
-    Request_close,\
-    RequestResponse,\
-    Request_last,\
-    Bluetooth_first,\
-    BluetoothStartThread,\
-    BluetoothConnectDevices,\
-    BluetoothConnectSources,\
-    BluetoothDeviceDisconnected,\
-    BluetoothDeviceCheckConnected,\
-    BluetoothSourceBadWrite,\
-    BluetoothSourceDisconnected,\
-    BluetoothSourceWriteConfig,\
-    BluetoothSocketWriteConfig,\
-    Bluetooth_last,\
-\
-    Gst_first,\
-    GstConnectDevices,\
-    GstConnectPipeline,\
-    GstStreamPort,\
-    GstStreamFile,\
-    GstStreamEnd,\
-    GstRemoveJob,\
-    Gst_last,\
-\
-    Control_first,\
-    ControlTest,\
-    ControlStartStream,\
-    ControlStreamStarted,\
-    ControlOutputFrame,\
-    Control_last,\
-\
-    Transform_first,\
-    TransformError,\
-    Transform_last,\
-\
-    TracerBlock,\
-\
-    Thread_first,\
-    ThreadWarning,\
-    ThreadMessage,\
-    ThreadShutdown,\
-    ThreadRemove,\
-    Thread_last,\
-\
-    ApplicationClose,\
-    ApplicationThreadsGone,\
-    ApplicationShutdown,\
-    ApplicationRestart,\
-\
-    last\
-)
-ENUM(EventType,EventTypes)
 
 /**
  * @brief The Event class
@@ -91,23 +33,23 @@ public:
      * @brief type
      * @return Event::Type
      */
-    virtual Type type()const{ return type_; }
+    virtual Type type()const{ return m_type; }
     /**
      * @brief getName
      * @return string
      */
-    string getName()const{ return string; }
+    string getName()const{ return m_string; }
     /**
      * @brief Event : empty constructor
      */
-    Event():Event(Event::Type::None){ string = "none"; }
+    Event():m_type(Event::Type::None),m_string("none"){}
     /**
      * @brief Event : only meaningful constructor
      * @param _type Event::Type
      * @param _string const char*
      */
-    Event(Type _type,string _string):Event((Event::Type)_type),m_string(_string),m_type(_type){}
-    Event(Type type):Event(type,string("")){}
+    Event(Type _type,string _string):m_type(_type),m_string(_string){}
+    Event(Type _type):m_type(_type),m_string(""){}
     /**
      * @brief clone : used by thread event filter
      * @return Event*
@@ -120,7 +62,7 @@ public:
      * @brief Event::~Event
      */
     virtual ~Event(){}
-    friend ostream operator <<(ostream &stream, const Event &event);
+    friend ostream &operator <<(ostream &stream, const Event &event);
     void punt()const;
     void send(Thread *target)const;
 private:
@@ -171,16 +113,15 @@ public:
      */
     void post()const
     {
-        Thread *thread;
         Object *receiver(getPointer<Object>());
         ThreadWorker *worker(dynamic_cast<ThreadWorker*>(receiver));
         if(worker){
-            thread = worker->getThread();
+            Debug() << "sending" << getName() << "to" << worker->getThread()->getBoostThread().get_id();
+            worker->getThread()->post(const_cast<Event*>(static_cast<const Event*>(this)));
         }else{
-            thread = receiver->thread();
+            Debug() << "sending" << getName() << "to" << drumlin::iapp->getThreadId();
+            drumlin::iapp->post(const_cast<Event*>(static_cast<const Event*>(this)));
         }
-        Debug() << "sending" << getName() << "to" << thread;
-        thread->post(const_cast<Event*>(static_cast<const Event*>(this)));
     }
 private:
     T *m_ptr;
@@ -224,10 +165,10 @@ template <const char>
 const ThreadEvent<const char> *make_event(Event::Type _type,const char *error,const char *that = 0)
 {
     ThreadEvent<const char> *event(new ThreadEvent<const char>(_type,error,that));
-    if(that && ((qint64)that > 10 || (qint64)that < 0)){
-        quietDebug() << event << event->type() << "from" << this_thread::get_id() << "***" << error << "holds" << that;
+    if(that && ((gint64)that > 10 || (gint64)that < 0)){
+        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error << "holds" << that;
     }else{
-        quietDebug() << event << event->type() << "from" << this_thread::get_id() << "***" << error;
+        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error;
     }
     return event;
 }
@@ -242,10 +183,10 @@ template <class T = Object>
 const ThreadEvent<T> *make_event(Event::Type _type,const char *error,T *that = 0)
 {
     ThreadEvent<T> *event(new ThreadEvent<T>(_type,error,that));
-    if(that && ((qint64)that > 10 || (qint64)that < 0)){
-        quietDebug() << event << event->type() << "from" << this_thread::get_id() << "***" << error << "holds" << that;
+    if(that && ((gint64)that > 10 || (gint64)that < 0)){
+        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error << "holds" << that;
     }else{
-        quietDebug() << event << event->type() << "from" << this_thread::get_id() << "***" << error;
+        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error;
     }
     return event;
 }
@@ -323,5 +264,7 @@ PodEvent<T> *pod_event_cast(const Event *event,T *out = 0)
     }
     return static_cast<PodEvent<T>*>(const_cast<Event*>(event));
 }
+
+} // namespace drumlin
 
 #endif // ERROR_H
