@@ -26,7 +26,7 @@ class Response;
  */
 class Request :
     public ThreadWorker
-    ,public SocketHandler
+    ,public SocketHandler<typename Connection<Request>::socket_type>
     ,public Connection<Request>
 {
 public:
@@ -105,9 +105,7 @@ protected:
     Response *createResponse();
 private:
     Server *server;
-    Socket *socket;
     byte_array data;
-    gintptr socketDescriptor = 0;
 };
 
 #endif // REQUEST_H

@@ -1,17 +1,20 @@
-#include <qs.h>
-using namespace QS;
-#include "tao/json.hh"
+#include <pleg.h>
+using namespace Pleg;
+#include "tao/json.hpp"
 using namespace tao;
-#include "response.h"
-#include <QDataStream>
-#include <QByteArray>
-#include <QSize>
-#include <QDir>
-#include <QCryptographicHash>
-#include <QBuffer>
 #include <sstream>
 #include <algorithm>
 #include <png.h>
+using namespace std;
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/regex.hpp>
+#include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/functional/hash.hpp>
+using namespace boost;
+#include "response.h"
+#include "byte_array.h"
 #include "exception.h"
 #include "request.h"
 #include "socket.h"
@@ -20,112 +23,117 @@ using namespace tao;
 #include "factory.h"
 #include "writer.h"
 #include "buffer.h"
-#include "bluetooth.h"
+//#include "bluetooth.h"
 #include "source.h"
 #include "gstreamer.h"
-#include "device.h"
+//#include "device.h"
 #include "application.h"
-#include "qslog.h"
+#include "log.h"
+using namespace drumlin;
 
-QSResponse::~QSResponse()
+namespace Pleg {
+
+Response::~Response()
 {
     if(writer)
         delete writer;
 }
 
 /**
- * @brief QSResponse::writeResponse : virtual dummy
+ * @brief Response::writeResponse : virtual dummy
  */
-void QSResponse::writeResponse()
+void Response::writeResponse()
 {
     getRequest()->getSocket()->write("ARGLE BARGLE");
 }
 
-void QSResponse::getStatus(json::value *status)const
+void Response::getStatus(json::value *status)const
 {
     json::object_t &obj(status->get_object());
     obj.insert({"url",getRequest()->getUrl().toStdString()});
     getRequest()->getSocket()->getStatus(status);
 }
 
-QSOptions::QSOptions(QSRequest *req) : QSResponse(req)
+Options::Options(Request *req) : Response(req)
 {
     statusCode = "200 OK";
-    headers << "Date: "+QDateTime::currentDateTimeUtc().toString();
-    headers << "Allow: OPTIONS, GET, HEAD, POST, PATCH";
-    headers << "Access-Control-Allow-Headers: Origin,Content-Type,Accept,Range,X-Method,X-Quiet";
-    headers << "Access-Control-Allow-Methods: POST,GET,HEAD,OPTIONS,PATCH";
-    headers << "Content-Length: 0";
+    headers << "Date: "+posix_time::to_iso_string(posix_time::microsec_clock::universal_time())
+            << "Allow: OPTIONS, GET, HEAD, POST, PATCH"
+            << "Access-Control-Allow-Headers: Origin,Content-Type,Accept,Range,X-Method,X-Quiet"
+            << "Access-Control-Allow-Methods: POST,GET,HEAD,OPTIONS,PATCH"
+            << "Content-Length: 0"
+    ;
 }
 
-void QSOptions::service()
+void Options::service()
 {
 }
 
-QSHead::QSHead(QSRequest *req) : QSResponse(req)
+Head::Head(Request *req) : Response(req)
 {
     statusCode = "200 OK";
 }
 
-void QSHead::service()
+void Head::service()
 {
-    headers.push_back("Content-Type: dunno/whatever");
+    headers << "Content-Type: dunno/whatever";
 }
 
 /**
- * @brief QSGet::QSGet : only constructor
- * @param req QSRequest*
+ * @brief Get::Get : only constructor
+ * @param req Request*
  */
-QSGet::QSGet(QSRequest *req) :
-    QSResponse(req),
+Get::Get(Request *req) :
+    Response(req),
     Continuer<Buffers::findRelevant_t>()
 {
-    qDebug() << "new" << req->getVerb() << req->getUrl();
+    Debug() << "new" << req->getVerb() << req->getUrl();
 }
 
 /**
- * @brief QSGet::service : services GET request
+ * @brief Get::service : services GET request
  * At present, just writes relevant buffers
  */
-void QSGet::service()
+void Get::service()
 {
     statusCode = "200 OK";
 }
 
 /**
- * @brief QSGet::accept : continuation for the CPS_call above
+ * @brief Get::accept : continuation for the CPS_call above
  * @param Buffers::findRelevant_t&
  * @param buffers Buffers::buffer_vec_type*
  */
-void QSGet::accept(Buffers::findRelevant_t &,Buffers::buffer_vec_type buffers)
+void Get::accept(Buffers::findRelevant_t &,Buffers::buffer_vec_type buffers)
 {
-    std::copy(buffers.begin(),buffers.end(),std::back_inserter(data));
+    copy(buffers.begin(),buffers.end(),back_inserter(data));
 }
 
-void QSGet::_get()
+void Get::_get()
 {
-    const QSRelevance *rel(getRequest()->getRelevance());
-    qDebug() << "get::service - " << *rel;
+    const Relevance *rel(getRequest()->getRelevance());
+    Debug() << "get::service - " << *rel;
     data.clear();
     auto buffers(Buffers::Cache(CPS_call(this,Buffers::findRelevant,rel)));
 
     if(getRequest()->getHeader("Content-Type").endsWith("json")){
-        headers.push_back("Content-Type: text/json");
+        headers << "Content-Type: text/json";
         getWriter()->writeJson(data);
-    }else if(rel->hasSource() && rel->getSource()->type == Sources::QSSource::Type::Video){
-        headers.push_back("Content-Type: image/png");
-        headers.push_back("Cache-Control: no-cache");
-        Sources::QSGStreamerSource *gs(dynamic_cast<Sources::QSGStreamerSource*>(rel->getSource()));
+    }else if(rel->hasSource() && rel->getSource()->type == Sources::Source::Type::Video){
+        headers << "Content-Type: image/png"
+                << "Cache-Control: no-cache"
+        ;
+        Sources::GStreamerSampleSource *gs(dynamic_cast<Sources::GStreamerSampleSource*>(rel->getSource()));
         if(!gs){
             //FIXME error
             return;
         }
         //I420 to RGB32_Premultiplied
         const unsigned char *_data = data.back()->data<unsigned char>();
-        int width = gs->getSrc()->getWidth(),height = gs->getSrc()->getHeight();
+        int width = gs->getWidth(),height = gs->getHeight();
 
         char filename[512];
-        strcpy(filename,(QDir::tempPath()+QDir::separator()+"QSServer-png-XXXXXX").toStdString().c_str());
+        strcpy(filename,(filesystem::temp_directory_path().string()+filesystem::path::preferred_separator+"Server-png-XXXXXX").c_str());
         mktemp(filename);
 
         FILE *fp = fopen(filename, "wb");
@@ -151,7 +159,7 @@ void QSGet::_get()
 
         png_color_struct row[width];
 
-        //        QImage image(QSize(width,height),QImage::Format_RGB888);
+        //        QImage image(ize(width,height),QImage::Format_RGB888);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 const unsigned char r = _data[ y * width * 3 + x * 3 + 0];
@@ -171,38 +179,38 @@ void QSGet::_get()
 
         fclose(fp);
 
-        QFile file(filename);
-        file.open(QFile::ReadOnly);
-        getRequest()->getSocket()->write(file.readAll());
+        ifstream file(filename);
+        getRequest()->getSocket() << file;
         file.close();
-        QDir::temp().remove(filename);
+        filesystem::remove(filesystem::path(filename));
 
     }else{
-        headers.push_back("Content-Type: application/raw");
+        headers << "Content-Type: application/raw";
         for(const Buffers::buffer_vec_type::value_type &buffer : data){
             if(buffer){
-                qDebug() << "process buffer " << buffer << buffer->getRelevance();
+                Debug() << "process buffer " << buffer << buffer->getRelevance();
                 getRequest()->getSocket()->write(buffer); //raw
             }
         }
     }
 }
 
-void QSGet::_dir()
+void Get::_dir()
 {
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance rel(getRequest()->getRelevanceRef());
-    QString dirpath(root+(rel.params.end()!=rel.params.find("r")?QDir::separator()+rel.params.at("r"):""));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance rel(getRequest()->getRelevanceRef());
+    string dirpath(root+(rel.params.end()!=rel.params.find("r")?string(filesystem::path::preferred_separator)+rel.params.at("r"):""));
     json::value tree(json::empty_object);
     json::object_t &tree_obj(tree.get_object());
     tree_obj.insert({"type","directory"});
-    QStringList path(dirpath.split("/",QString::SkipEmptyParts));
-    tree_obj.insert({"name",path.back().toStdString()});
+    vector<string> path;
+    algorithm::split(path,dirpath,"/",algorithm::token_compress_on);
+    tree_obj.insert({"name",path.back()});
     path.pop_back();
-    tree_obj.insert({"path",path.join("/").toStdString()});
+    tree_obj.insert({"path",algorithm::join(path,"/")});
     json::value children(json::empty_array);
-    QString error(Files::treeAt(&children,dirpath));
+    string error(Files::treeAt(&children,dirpath));
     tree_obj.insert({"children",children});
     tree_obj.insert({"root",true});
     if(error.length())
@@ -211,301 +219,320 @@ void QSGet::_dir()
         getRequest()->getSocket()->write(json::to_string(tree).c_str());
 }
 
-qint64 QSGet::readRange(QIODevice *device,QString mime,qint64 completeLength,QString range)
+gint64 Get::readRange(ifstream &device,string mime,gint64 completeLength,string range)
 {
-    QByteArray bytes;
+    byte_array bytes;
+    regex rx("\\d+");
 
-    if(QRegExp("\\d+").exactMatch(range)){
-        device->seek(range.toInt());
-        bytes = device->read(1);
-    }else if(range.endsWith('-')){
-        device->seek(range.toInt());
-        bytes = device->readAll();
-    }else if(range.startsWith('-')){
-        device->seek(0);
-        bytes = device->read(range.replace("-","").toInt());
+    if(regex_match(range,rx)){
+        device.seekg(lexical_cast<int>(range));
+        bytes = device.read(1);
+    }else if(algorithm::find_tail(range,1)=="-"){
+        device->seekg(lexical_casl<int>(range));
+        device >> bytes;
+    }else if(algorithm::find_head(range,1)=="-"){
+        device->seekg(0);
+        size_t sz(lexical_cast<int>(range.substr(1)));
+        char *pc=(char*)malloc(sz);
+        device.read(pc,sz);
+        bytes.append(pc);
+        free(pc);
     }else{
-        QVector<QStringRef> rparts(range.splitRef("-",QString::SplitBehavior::SkipEmptyParts));
-        device->seek(rparts[0].toInt());
-        bytes = device->read((rparts[1].toInt()-rparts[0].toInt()) +1);
+        vector<string> rparts;
+        algorithm::split(rparts,range,"-",algorithm::token_compress_on);
+        device->seekg(lexical_cast<int>(rparts[0]));
+        size_t sz(1+lexical_cast<int>(rparts[1])-lexical_cast<int>(rparts[0]));
+        char *pc=(char*)malloc(sz);
+        device->read(pc,sz);
+        bytes << pc;
+        free(pc);
     }
 
     if(2==boundary.length()){
-        boundary += QCryptographicHash::hash(bytes,QCryptographicHash::Sha1).toHex();
+        hash<string> string_hash;
+        boundary += string_hash(bytes.string());
     }
-    QString thisBoundary(boundary+"\r\nContent-Type: "+mime+"\r\nContent-Range: bytes "+range+"/"+completeLength+"\r\n\r\n");
+    string thisBoundary(boundary+"\r\nContent-Type: "+mime+"\r\nContent-Range: bytes "+range+"/"+completeLength+"\r\n\r\n");
     getRequest()->getSocket()->write(thisBoundary);
     getRequest()->getSocket()->write(bytes);
 
     return bytes.length();
 }
 
-void QSGet::_file()
+void Get::_file()
 {
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString filepath;
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string filepath;
     if(rel.params.end()==rel.params.find("r")){
-        filepath = root+QDir::separator()+rel.arguments.at("name");
+        filepath = root+filesystem::path::preferred_separator+rel.arguments.at("name");
     }else if(Files::virtualFilePath(rel.params.at("r")).length(),true){
-        filepath = rel.params.at("r")+QDir::separator()+rel.arguments.at("name");
-    }else if(Files::virtualFilePath(QDir::separator()+rel.params.at("r")).length(),true){
-        filepath = root+QDir::separator()+rel.params.at("r")+QDir::separator()+rel.arguments.at("name");
+        filepath = rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
+    }else if(Files::virtualFilePath(filesystem::path::preferred_separator+rel.params.at("r")).length(),true){
+        filepath = root+filesystem::path::preferred_separator+rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
     }
-    QString path(Files::virtualFilePath(filepath));
+    string path(Files::virtualFilePath(filepath));
     if(!path.length()) {
         statusCode = "403 Forbidden";
-        qLog() << "Attempted to access illegal path.";
+        Log() << "Attempted to access illegal path.";
         return;
     }
-    QFile file(path);
-    qint64 completeLength(file.size());
-    QString mime("application/stuff");
-    if(path.endsWith("mp4")){
+    gint64 completeLength(filesystem::file_size(path));
+    string mime("application/stuff");
+    if(algorithm::find_tail(path.string(),3)=="mp4"){
         mime = "video/mp4";
     }else{
         mime = "text/text";
     }
-    headers.append(QString("Date: ")+QDateTime::currentDateTime().toUTC().toString());
-    if(!file.exists()){
-        statusCode = "404 File not found : " + path;
+    headers.append(string("Date: ")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()));
+    if(!filesystem::exists(path)){
+        statusCode = "404 File not found : " + path.string();
         return;
     }
-    if(!file.open(QFile::ReadOnly)){
-        statusCode = "404 Unreadable : " + path;
+    ifstream fstream(path.string());
+    if(!fstream.is_open()){
+        statusCode = "404 Unreadable : " + path.string();
         return;
     }
-    qint64 contentLength = 0;
+    fstream.close();
+    gint64 contentLength = 0;
     if(getRequest()->headers.contains("Range")){
         statusCode = "206 Partial Content";
-        QString rangeHeader(getRequest()->headers["Range"].replace("bytes=","").trimmed());
-        if(~rangeHeader.indexOf(',')){
-            QStringList ranges = rangeHeader.split(",",QString::SplitBehavior::SkipEmptyParts);
-            for(QString const& range : ranges){
+        string::size_type sz(string::npos);
+        string rangeHeader;
+        if(string::npos != (sz = getRequest()->headers["Range"].find_first_of("bytes="))){
+            rangeHeader = getRequest()->headers["Range"].replace(sz,6,"");
+        }else{
+            rangeHeader = getRequest()->headers["Range"];
+        }
+        rangeHeader = algorithm::trim(rangeHeader);
+        if(string::npos != rangeHeader.find_first_of(",")){
+            vector<string> ranges;
+            algorithm::split(ranges,rangeHeader,",",algorithm::token_compress_on);
+            for(string const& range : ranges){
                 contentLength += readRange(&file,mime,completeLength,range);
             }
         }else{
             contentLength += readRange(&file,mime,completeLength,rangeHeader);
         }
-        headers.append(QString("Content-Type: multipart/byteranges; boundary=")+boundary.mid(2));
+        headers << string("Content-Type: multipart/byteranges; boundary=")+boundary.mid(2);
     }else{
         contentLength = getRequest()->getSocket()->write(file.readAll());
     }
     std::stringstream ss;
     ss << "Content-Length: " << contentLength;
-    headers.append(QString(ss.str().c_str()));
+    headers << ss.str();
     file.close();
 }
 
-void QSGet::_lsof()
+void Get::_lsof()
 {
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString rpath(Files::virtualFilePath(root+QDir::separator()+(rel.params.end()!=rel.params.find("r")?rel.params.at("r"):QString("")),true));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r"):string("")),true));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
-        qLog() << "Attempted to access illegal path.";
+        Log() << "Attempted to access illegal path.";
         return;
     }
     json::value object(json::empty_object);
     json::object_t &obj(object.get_object());
-    QSFiles::writers_vec_type writers(Files::files.list());
-    for(QSFiles::writers_vec_type::value_type const& fileWriter : writers){
-        if(!fileWriter->getFilePath().startsWith(rpath))
+    Files::writers_vec_type writers(Files::files.list());
+    for(Files::writers_vec_type::value_type const& fileWriter : writers){
+        if(algorithm::find_head(fileWriter->getFilePath(),rpath.length()) != rpath)
             continue;
         if(rel.arguments.end() != rel.arguments.find("name")
                 &&
-           fileWriter->getFile().fileName()!= rel.arguments.at("name")){
+           fileWriter->getFile().fileName() != rel.arguments.at("name")){
             continue;
         }
         json::value file(json::empty_object);
         fileWriter->getStatus(&file);
-        obj.insert({fileWriter->getFilePath().toStdString(),file});
+        obj.insert({fileWriter->getFilePath(),file});
     }
     getRequest()->getSocket()->write(json::to_string(object).c_str());
 }
 
 /**
- * @brief QSPost::QSPost : only constructor
- * @param req QSRequest*
+ * @brief Post::Post : only constructor
+ * @param req Request*
  */
-QSPost::QSPost(QSRequest *req) : QSResponse(req)
+Post::Post(Request *req) : Response(req)
 {
-    qDebug() << "new" << req->getVerb() << req->getUrl();
+    Debug() << "new" << req->getVerb() << req->getUrl();
 }
 
 /**
- * @brief QSPost::service : services POST request
+ * @brief Post::service : services POST request
  */
-void QSPost::service()
+void Post::service()
 {
     statusCode = "200 OK";
     headers.push_back("Content-Type: text/json");
-//    auto t(Factory::Transform::createQSPassthrough(this));
+//    auto t(Factory::Transform::createPassthrough(this));
 //    t->setWriter(getWriter());
-//    getRequest()->getServer()->addThread(t->getQSThread(),true);
+//    getRequest()->getServer()->addThread(t->getThread(),true);
 }
 
-void QSPost::_touch()
+void Post::_touch()
 {
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString rpath(Files::virtualFilePath(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+QDir::separator():QString(""))+rel.arguments.at("file"));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string rpath(Files::virtualFilePath(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file"));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
-        qLog() << "Outside files_root!";
+        Log() << "Outside files_root!";
         return;
     }
-    QFile file(rpath);
-    if(file.exists()){
+    if(filesystem::exists(filesystem::path(rpath))){
         statusCode = "409 Conflict : File already exists";
-        qLog() << "File already exists.";
+        Log() << "File already exists.";
         return;
     }
-    if(!file.open(QFile::WriteOnly|QIODevice::Append)){
+    ofstream ofstrm;
+    ofstrm.open(rpath,ios_base::out|ios_base::app);
+    if(!ofstrm.is_open()){
         statusCode = "403 Forbidden";
-        qLog() << "EPERM";
+        Log() << "EPERM";
         return;
     }
-    file.close();
-    qLog() << "File" << rpath.toStdString() << "created";
+    ofstrm.close();
+    Log() << "File" << rpath << "created";
     getRequest()->getSocket()->write("File created");
 }
 
-void QSPost::_mkdir()
+void Post::_mkdir()
 {
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString rpath(Files::virtualFilePath(QDir::separator()+(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+QDir::separator():QString("")),true));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string rpath(Files::virtualFilePath(filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string("")),true));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
-        qLog() << "Outside files_root!";
+        Log() << "Outside files_root!";
         return;
     }
-    QDir dir(rpath);
-    if(!dir.exists()){
+    filesystem::path p(rpath);
+    if(!filesystem::exists(p) || filesystem::status(p).type() ^ filesystem::directory_file)
+    {
         statusCode = "404 Not found";
-        qLog() << "directory not found";
+        Log() << "directory not found";
         return;
     }
-    if(!dir.mkdir(rel.arguments.at("file"))){
+    if(!filesystem::create_directory(rpath+filesystem::path::preferred_separator+rel.arguments.at("file"))){
         statusCode = "403 Forbidden";
-        qLog() << "mkdir failed";
+        Log() << "mkdir failed";
         return;
     }
-    qLog() << "Directory" << rel.arguments.at("file").toStdString() << "created in" << rpath.toStdString();
+    Log() << "Directory" << rel.arguments.at("file") << "created in" << rpath;
     getRequest()->getSocket()->write("Directory Created");
 }
 
-void QSPost::makeWriterFile()
+void Post::makeWriterFile()
 {
     getRequest()->delayed = true;
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString rpath(Files::virtualFilePath(root+QDir::separator()+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+QDir::separator():QString(""))+rel.arguments.at("file")));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file")));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
-        qLog() << "Outside files_root!";
+        Log() << "Outside files_root!";
         return;
     }
-    qLog() << rel.getSourceName() << "writing to" << rpath.toStdString();
+    Log() << rel.getSourceName() << "writing to" << rpath;
     rel.getSource()->writeToFile(getRequest(),rpath);
 }
 
-void QSPost::stopWriterFile()
+void Post::stopWriterFile()
 {
     getRequest()->delayed = true;
-    Config::QSJsonConfig config(Config::files_config_file);
-    QString root(config["/files_root"].get_string().c_str());
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    QString rpath(Files::virtualFilePath(root+QDir::separator()+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+QDir::separator():QString(""))+rel.arguments.at("file")));
+    Config::JsonConfig config(Config::files_config_file);
+    string root(config["/files_root"].get_string());
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file")));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
-        qLog() << "Outside files_root!";
+        Log() << "Outside files_root!";
         return;
     }
-    qLog() << "removing file writer:" << rpath.toStdString();
+    Log() << "removing file writer:" << rpath;
     Files::files.remove(rpath);
 }
 
-#if defined(GSTREAMER) || defined(QTGSTREAMER)
-void QSPost::teeSourcePort()
+void Post::teeSourcePort()
 {
     getRequest()->delayed = true;
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    Sources::QSGStreamerSource *source = dynamic_cast<Sources::QSGStreamerSource*>(rel.getSource());
-    threads_type threads(app->findThread("gstreamer",QSThreadWorker::QSThreadType::gstreamer));
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    Sources::GStreamerSource *source = dynamic_cast<Sources::GStreamerSampleSource*>(rel.getSource());
+    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
     if(!source){
-        getRequest()->getSocket()->write("Not a video source!");
-        qLog() << rel.getSourceName() << "is not a video source!";
+        getRequest()->getSocket()->write("Not a sample source!");
+        Log() << rel.getSourceName() << "is not a sample source!";
         return;
     }
     if(0==std::distance(threads.begin(),threads.end())){
         getRequest()->getSocket()->write("GStreamer not found!");
-        qLog() << "GStreamer not found!";
+        Log() << "GStreamer not found!";
         return;
     }
     for(threads_type::iterator::value_type const& thread : threads){
-        GStreamer::QSGStreamer *gst(dynamic_cast<GStreamer::QSGStreamer*>(thread->getWorker()));
+        GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
             return;
-        if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::QSGStreamer::jobs_type::value_type const& job){
+        if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::GStreamer::jobs_type::value_type const& job){
             return job.first == (rel.arguments.at("source")+".tee").toStdString();
         })) return;
-        qLog() << "opening udp tee at" << rel.arguments.at("ip").toStdString() << rel.arguments.at("port").toStdString();
-        make_pod_event(QSEvent::Type::GstStreamPort,"openSourcePort",getRequest())->send(thread);
+        Log() << "opening udp tee at" << rel.arguments.at("ip").toStdString() << rel.arguments.at("port").toStdString();
+        make_pod_event(Event::Type::GstStreamPort,"openSourcePort",getRequest())->send(thread);
         break;
     }
 }
 
-#endif
-
 /**
- * @brief QSPatch::QSPatch : only constructor
- * @param req QSRequest*
+ * @brief Patch::Patch : only constructor
+ * @param req Request*
  */
-QSPatch::QSPatch(QSRequest *req) : QSResponse(req)
+Patch::Patch(Request *req) : Response(req)
 {
-    req->verb = QSRoute::PATCH;
-    qDebug() << "new" << req->getVerb() << req->getUrl();
+    req->verb = Route::PATCH;
+    Debug() << "new" << req->getVerb() << req->getUrl();
 }
 
 /**
- * @brief QSPatch::service : services PATCH requests
+ * @brief Patch::service : services PATCH requests
  */
-void QSPatch::service()
+void Patch::service()
 {
     statusCode = "200 OK";
     headers.push_back("Content-Type: text/json");
 }
 
-void QSPatch::_routes()
+void Patch::_routes()
 {
-    QSServer::routes_type const& routes(getRequest()->getServer()->getRoutes());
+    Server::routes_type const& routes(getRequest()->getServer()->getRoutes());
     json::value array(json::empty_array);
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
+    Relevance const& rel(getRequest()->getRelevanceRef());
     bool detail(rel.arguments.end()!=rel.arguments.find("detail"));
-    for(QSServer::routes_type::value_type const& r : routes){
-        array.get_array().push_back(r.toStdString(detail));
+    for(Server::routes_type::value_type const& r : routes){
+        array.get_array().push_back(r.toString(detail));
     }
     getRequest()->getSocket()->write(json::to_string(array).c_str());
 }
 
-void QSPatch::_devices()
+void Patch::_devices()
 {
-    Config::QSJsonConfig config("devices.json");
+    Config::JsonConfig config("devices.json");
     config.save(getRequest()->getSocket());
 }
 
 /**
- * @brief QSPatch::_status : services PATCH /status, returning { threads:[name,...],sources:[{name:"",index:int,charting:false},...] }
+ * @brief Patch::_status : services PATCH /status, returning { threads:[name,...],sources:[{name:"",index:int,charting:false},...] }
  */
-void QSPatch::_status()
+void Patch::_status()
 {
     json::value status(json::empty_object);
     getRequest()->getServer()->getStatus(&status);
@@ -513,225 +540,228 @@ void QSPatch::_status()
     Files::getStatus(&status);
     Buffers::Cache(CPS_call_void(Buffers::getCacheStatus,&status));
     Buffers::Allocator(CPS_call_void(Buffers::getAllocatorStatus,&status));
-    getRequest()->getSocket()->write(json::to_string(status).c_str());
+    getRequest()->getSocket()->write(json::to_string(status));
 }
 
-void QSPatch::_meta()
+void Patch::_meta()
 {
-    QString const& source(getRequest()->getRelevanceRef().arguments.at("source"));
+    string const& source(getRequest()->getRelevanceRef().arguments.at("source"));
     getWriter()->writeMetaJson(source);
 }
 
 /**
- * @brief QSPatch::_connect : services PATCH /connect/<mac> by starting bluetooth thread and returning _status()
- * @param mac QString const&
+ * @brief Patch::_connect : services PATCH /connect/<mac> by starting bluetooth thread and returning _status()
+ * @param mac tring const&
  */
-void QSPatch::_connect()
-{
-    QString const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
-    qLog() << "Connecting all services on device" << mac.toStdString();
-    make_pod_event(QSEvent::Type::BluetoothStartThread,"startThread",mac)->punt();
-    QSThread::msleep(1000);
-}
+//void Patch::_connect()
+//{
+//    string const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
+//    Log() << "Connecting all services on device" << mac.toStdString();
+//    make_pod_event(Event::Type::BluetoothStartThread,"startThread",mac)->punt();
+//    this_thread::sleep_for(1000000000);
+//}
 
-void QSPatch::_connectSource()
-{
-    QSRelevance::arguments_type const& args(getRequest()->getRelevanceRef().arguments);
-    threads_type threads(app->findThread("all",QSThreadWorker::QSThreadType::bluez));
-    do{
-        if(std::distance(threads.begin(),threads.end())<1){
-            make_pod_event(QSEvent::Type::BluetoothStartThread,"startThread",QString("bluez"))->punt();
-            qLog() << "Starting bluetooth thread.";
-            break;
-        }
-        QSThread *thread(threads.at(0));
-        QSBluetooth *blue = dynamic_cast<QSBluetooth*>(thread->getWorker());
-        if(!blue){
-            qLog() << "No bluetooth thread started!";
-            qCritical() << "No bluetooth thread started!";
-            break;
-        }
-        QSBluetoothLEDevice *le_device(blue->findDevice(args.at("mac")));
-        if(!le_device){
-            json::value *devices(blue->conf.getDevice(args.at("mac")));
-            for(auto device : devices->get_object()){
-                blue->connectDevice(new json::value(device.second));
-                qLog() << "Connecting device" << args.at("mac").toStdString();
-            }
-            break;
-        }
-        le_device->connectService(args.at("name"));
-        qLog() << "Connecting service" << args.at("name").toStdString();
-        QSThread::msleep(5000);
-    }while(false);
-}
+//void Patch::_connectSource()
+//{
+//    Relevance::arguments_type const& args(getRequest()->getRelevanceRef().arguments);
+//    threads_type threads(app->findThread("all",ThreadWorker::ThreadType::bluez));
+//    do{
+//        if(distance(threads.begin(),threads.end())<1){
+//            make_pod_event(Event::Type::BluetoothStartThread,"startThread",string("bluez"))->punt();
+//            Log() << "Starting bluetooth thread.";
+//            break;
+//        }
+//        Thread *thread(threads.at(0));
+//        Bluetooth *blue = dynamic_cast<Bluetooth*>(thread->getWorker());
+//        if(!blue){
+//            Log() << "No bluetooth thread started!";
+//            Critical() << "No bluetooth thread started!";
+//            break;
+//        }
+//        BluetoothLEDevice *le_device(blue->findDevice(args.at("mac")));
+//        if(!le_device){
+//            json::value *devices(blue->conf.getDevice(args.at("mac")));
+//            for(auto device : devices->get_object()){
+//                blue->connectDevice(new json::value(device.second));
+//                qLog() << "Connecting device" << args.at("mac").toStdString();
+//            }
+//            break;
+//        }
+//        le_device->connectService(args.at("name"));
+//        qLog() << "Connecting service" << args.at("name").toStdString();
+//        this_thread::sleep_for(5000000000);
+//    }while(false);
+//}
 
-/**
- * @brief QSPatch::_disconnect : PATCH /disconnect/<mac> destroys the worker(s)
- * @param mac QString const&
- */
-void QSPatch::_disconnect()
+///**
+// * @brief Patch::_disconnect : PATCH /disconnect/<mac> destroys the worker(s)
+// * @param mac tring const&
+// */
+//void Patch::_disconnect()
+//{
+//    tring const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
+//    qDebug() << "disconnecting" << mac;
+//    Bluetooth *bluet(nullptr);
+//    BluetoothLEDevice *dev(nullptr);
+//    threads_type threads(app->findThread(mac,ThreadWorker::ThreadType::bluez));
+//    if(0==std::distance(threads.begin(),threads.end())){
+//        getRequest()->getSocket()->write(mac+" not found\n");
+//        return;
+//    }
+//    for(auto thread : threads){
+//        bluet = dynamic_cast<Bluetooth*>(thread->getWorker());
+//        dev = bluet->findDevice(mac);
+//        if(nullptr==dev){
+//            continue;
+//        }
+//        qLog() << "Disconnecting" << mac.toStdString();
+//        bluet->disconnectDevice(dev);
+//    }
+//}
+
+///**
+// * @brief Patch::_scan : PATCH /scan
+// */
+//void Patch::_scan()
+//{
+//    Log() << "Starting bluetooth scan...";
+//    Debug() << "Patch starting scan...";
+//    Thread *thread(new Thread("scan"));
+//    BluetoothScanner *scanner = new BluetoothScanner(thread,"devices.json");
+//    connect(scanner,SIGNAL(timedOut()),this,SLOT(timedOut()));
+//    connect(scanner,SIGNAL(writeToSocket()),this,SLOT(writeToSocket()));
+//    app->addThread(thread,true);
+//    worker = scanner;
+//    thread->wait();
+//}
+
+void Patch::_openPipe()
 {
-    QString const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
-    qDebug() << "disconnecting" << mac;
-    QSBluetooth *bluet(nullptr);
-    QSBluetoothLEDevice *dev(nullptr);
-    threads_type threads(app->findThread(mac,QSThreadWorker::QSThreadType::bluez));
-    if(0==std::distance(threads.begin(),threads.end())){
-        getRequest()->getSocket()->write(mac+" not found\n");
-        return;
+    Relevance const& rel(getRequest()->getRelevanceRef());
+    threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+    if(0==distance(threads.begin(),threads.end())){
+        threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getThread());
     }
-    for(auto thread : threads){
-        bluet = dynamic_cast<QSBluetooth*>(thread->getWorker());
-        dev = bluet->findDevice(mac);
-        if(nullptr==dev){
-            continue;
-        }
-        qLog() << "Disconnecting" << mac.toStdString();
-        bluet->disconnectDevice(dev);
-    }
-}
 
-/**
- * @brief QSPatch::_scan : PATCH /scan
- */
-void QSPatch::_scan()
-{
-    qLog() << "Starting bluetooth scan...";
-    qDebug() << "QSPatch starting scan...";
-    QSThread *thread(new QSThread("scan"));
-    QSBluetoothScanner *scanner = new QSBluetoothScanner(thread,"devices.json");
-    connect(scanner,SIGNAL(timedOut()),this,SLOT(timedOut()));
-    connect(scanner,SIGNAL(writeToSocket()),this,SLOT(writeToSocket()));
-    app->addThread(thread,true);
-    worker = scanner;
-    thread->wait();
-}
-
-void QSPatch::_openPipe()
-{
-    QSRelevance const& rel(getRequest()->getRelevanceRef());
-    threads_type threads(app->findThread("gstreamer",QSThreadWorker::QSThreadType::gstreamer));
-    if(0==std::distance(threads.begin(),threads.end())){
-        threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getQSThread());
-    }
-
-    Config::QSJsonConfig config(Config::gstreamer_config_file);
+    Config::JsonConfig config(Config::gstreamer_config_file);
 
     for(threads_type::iterator::value_type const& thread : threads){
-        GStreamer::QSGStreamer *gst(dynamic_cast<GStreamer::QSGStreamer*>(thread->getWorker()));
+        GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
             continue;
-        make_pod_event(QSEvent::Type::GstConnectPipeline,__func__,getRequest())->send(gst);
+        make_pod_event(Event::Type::GstConnectPipeline,__func__,getRequest())->send(gst);
     }
 }
 
 /**
- * @brief QSPatch::_config : PATCH /config returns client.json
+ * @brief Patch::_config : PATCH /config returns client.json
  */
-void QSPatch::_config()
+void Patch::_config()
 {
-    std::string file;
+    string file;
     if(!getRequest()->getRelevanceRef().arguments.count("file")){
         file = "devices.json";
     }else{
-        file = getRequest()->getRelevanceRef().arguments.at("file").toStdString();
+        file = getRequest()->getRelevanceRef().arguments.at("file");
     }
-    qLog() << "GET config from" << file;
-    Config::QSJsonConfig config(std::string("./")+file);
+    Log() << "GET config from" << file;
+    Config::JsonConfig config(string(".")+filesystem::path::preferred_separator+file);
     config.save(getRequest()->getSocket());
 }
 
 /**
- * @brief QSPatch::_shutdown : PATCH /shutdown gracefully heads for the pub
+ * @brief Patch::_shutdown : PATCH /shutdown gracefully heads for the pub
  */
-void QSPatch::_shutdown()
+void Patch::_shutdown()
 {
-    qLog() << "Shutting down...";
+    Log() << "Shutting down...";
     getRequest()->getSocket()->write("Shutting down...");
     main_server->closed = true;
-    make_event(QSEvent::Type::ApplicationClose,"shutting down")->punt();
+    make_event(Event::Type::ApplicationClose,"shutting down")->punt();
 }
 
 /**
- * @brief QSPatch::_restart : PATCH /restart allows restarting the server
+ * @brief Patch::_restart : PATCH /restart allows restarting the server
  */
-void QSPatch::_restart()
+void Patch::_restart()
 {
-    qLog() << "Restarting...";
+    Log() << "Restarting...";
     getRequest()->getSocket()->write("Restarting...");
     main_server->closed = true;
-    make_event(QSEvent::Type::ApplicationClose,"restarting",(QObject*)1UL)->punt();
+    make_event(Event::Type::ApplicationClose,"restarting",(Object*)1UL)->punt();
 }
 
 /**
- * @brief QSPatch::_removeSource : PATCH /remove/<source> may result in device disconnection
- * @param source QString const&
+ * @brief Patch::_removeSource : PATCH /remove/<source> may result in device disconnection
+ * @param source tring const&
  */
-void QSPatch::_removeSource()
+void Patch::_removeSource()
 {
-    QString const& source_name(getRequest()->getRelevanceRef().arguments.at("source"));
-    Sources::QSSource *source(Sources::sources.fromString(source_name));
+    string const& source_name(getRequest()->getRelevanceRef().arguments.at("source"));
+    Sources::Source *source(Sources::sources.fromString(source_name));
     if(!source){
         statusCode = "404 Source not found";
-        qLog() << statusCode.toStdString();
+        Log() << statusCode;
         return;
     }
-    Sources::QSGStreamerSourceBase *gstreamer_source(dynamic_cast<Sources::QSGStreamerSourceBase*>(source));
+    Sources::GStreamerSourceBase *gstreamer_source(dynamic_cast<Sources::GStreamerSourceBase*>(source));
     if(!gstreamer_source){
         Sources::sources.remove((const char*)*source);
-        qLog() << "Removed source " << (const char*)*source;
+        Log() << "Removed source " << (const char*)*source;
     }else{
-        threads_type threads(app->findThread("gstreamer",QSThreadWorker::QSThreadType::gstreamer));
-        if(0==std::distance(threads.begin(),threads.end())){
+        threads_type threads(app->findThread("gstreamer",ThreadWorker::ThreadType::gstreamer));
+        if(0==distance(threads.begin(),threads.end())){
             statusCode = "404 GStreamer not active";
-            qLog() << statusCode.toStdString();
+            Log() << statusCode;
             return;
         }
-        make_pod_event(QSEvent::Type::GstRemoveJob,__func__,gstreamer_source->getName())->send(threads[0]);
+        make_pod_event(Event::Type::GstRemoveJob,__func__,gstreamer_source->getName())->send(threads[0]);
     }
 }
 
 /**
- * @brief QSPatch::timedOut : PATCH /scan
+ * @brief Patch::timedOut : PATCH /scan
  */
-void QSPatch::timedOut()
+void Patch::timedOut()
 {
-    qLog() << "Scan timed out.";
+    Log() << "Scan timed out.";
     getRequest()->getSocket()->write("Scan timed out.");
 }
 
-/**
- * @brief QSPatch::writeToSocket : PATCH /scan
- */
-void QSPatch::writeToSocket()
-{
-    QSBluetoothScanner *scanner(dynamic_cast<QSBluetoothScanner*>(worker));
-    if(scanner){
-        scanner->conf.save(getRequest()->getSocket());
-    }
-    worker->signalTermination();
-}
+///**
+// * @brief Patch::writeToSocket : PATCH /scan
+// */
+//void Patch::writeToSocket()
+//{
+//    BluetoothScanner *scanner(dynamic_cast<BluetoothScanner*>(worker));
+//    if(scanner){
+//        scanner->conf.save(getRequest()->getSocket());
+//    }
+//    worker->signalTermination();
+//}
 
-void QSDummy::catchall()
+void Dummy::catchall()
 {
     statusCode = "200 OK";
-    QSGet get(getRequest());
-    QStringList parts(getRequest()->getUrl().split("/"));
-    QSRelevance *rel(getRequest()->getRelevance());
+    Get get(getRequest());
+    vector<string> parts;
+    algorithm::split(parts,getRequest()->getUrl(),"/",algorithm::token_compress_on);
+    Relevance *rel(getRequest()->getRelevance());
     rel->arguments.clear();
     rel->arguments.insert({"name",parts.back()});
-    if(parts.back().endsWith("mp4")){
+    if(algorithm::find_tail(parts.back(),4)==".mp4"){
         headers.push_back("Content-Type: video/mp4");
     }else{
         headers.push_back("Content-type: text/json");
     }
     parts.pop_back();
     rel->params.clear();
-    rel->params.insert({"r",parts.join("/")});
+    rel->params.insert({"r",algorithm::join(parts,"/")});
     get._file();
 }
 
-void QSDummy::service()
+void Dummy::service()
 {
 }
+
+} // namespace drumlin

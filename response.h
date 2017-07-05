@@ -1,9 +1,9 @@
 #ifndef RESPONSE_H
 #define RESPONSE_H
 
-#include <QObject>
-#include <QMutex>
 #include <memory>
+using namespace std;
+#include "object.h"
 #include "uri.h"
 #include "relevance.h"
 #include "buffer.h"
@@ -12,157 +12,156 @@
 #include "jsonconfig.h"
 #include "request.h"
 #include "thread.h"
+using namespace drumlin;
 
-class QSResponseWriter;
+namespace Pleg {
+
+class ResponseWriter;
 
 /**
- * @brief The QSResponse class : abstract base
+ * @brief The Response class : abstract base
  */
-class QSResponse :
-    public QObject,
-    public QSStatusReporter
+class Response :
+    public Object,
+    public StatusReporter
 {
-    Q_OBJECT
-
-protected:
-    QSRequest *req;
-    QSThreadWorker *worker;
-    QSResponseWriter *writer = nullptr;
-    QString statusCode = "403 Forbidden";
 public:
-    QStringList headers;
-    QString getStatusCode()const { return statusCode; }
+    string getStatusCode()const { return statusCode; }
     /**
-     * @brief QSResponse : only constructor
-     * @param _req QSRequest*
+     * @brief Response : only constructor
+     * @param _req Request*
      */
-    QSResponse(QSRequest *_req) : QObject(),req(_req){}
+    Response(Request *_req) : Object(),req(_req){}
     /**
      * @brief getRequest
-     * @return QSRequest*
+     * @return Request*
      */
-    QSRequest *getRequest()const{ return req; }
+    Request *getRequest()const{ return req; }
     /**
      * @brief getWorker
-     * @return QSThreadWorker*
+     * @return ThreadWorker*
      */
-    QSThreadWorker *getWorker()const{ return worker; }
+    ThreadWorker *getWorker()const{ return worker; }
     /**
      * @brief setWriter
-     * @param _writer QSResponseWriter*
-     * @return QSResponse*
+     * @param _writer ResponseWriter*
+     * @return Response*
      */
-    QSResponse *setWriter(QSResponseWriter *_writer){ writer = _writer; return this; }
+    Response *setWriter(ResponseWriter *_writer){ writer = _writer; return this; }
     /**
      * @brief getWriter
-     * @return QSResponseWriter*
+     * @return ResponseWriter*
      */
-    QSResponseWriter *getWriter(){ return writer; }
+    ResponseWriter *getWriter(){ return writer; }
     virtual void service()=0;
-    virtual ~QSResponse();
+    virtual ~Response();
     virtual void writeResponse();
     virtual void getStatus(json::value *status)const;
+public:
+    vector<string> headers;
+protected:
+    Request *req;
+    ThreadWorker *worker;
+    ResponseWriter *writer = nullptr;
+    string statusCode = "403 Forbidden";
 };
 
-class QSOptions :
-    public QSResponse
+class Options :
+    public Response
 {
 public:
-    QSOptions(QSRequest *req);
+    Options(Request *req);
     void service();
 };
 
-class QSHead :
-    public QSResponse
+class Head :
+    public Response
 {
 public:
-    QSHead(QSRequest *req);
+    Head(Request *req);
     void service();
 };
 
 /**
- * @brief The QSGet class : HTTP GET
+ * @brief The Get class : HTTP GET
  */
-class QSGet :
-    public QSResponse,
+class Get :
+    public Response,
     public Continuer<Buffers::findRelevant_t>
 {
-    Q_OBJECT
-
-    Buffers::buffer_vec_type data;
-    QString boundary = "--";
 public:
-    QSGet(QSRequest *req);
+    Get(Request *req);
     virtual void service();
-    virtual ~QSGet() {}
+    virtual ~Get() {}
     virtual void accept(Buffers::findRelevant_t &,Buffers::buffer_vec_type buffers);
 
-    Q_INVOKABLE void _get();
-    Q_INVOKABLE void _dir();
-    qint64 readRange(QIODevice *device,QString mime,qint64 completeLength,QString range);
-    Q_INVOKABLE void _file();
-    Q_INVOKABLE void _lsof();
-    Q_INVOKABLE void catchall(){ _file(); }
+    void _get();
+    void _dir();
+    gint64 readRange(ifstream &device,string mime,gint64 completeLength,string range);
+    void _file();
+    void _lsof();
+    void catchall(){ _file(); }
+private:
+    Buffers::buffer_vec_type data;
+    string boundary = "--";
 };
 
 /**
- * @brief The QSPost class : HTTP POST
+ * @brief The Post class : HTTP POST
  */
-class QSPost : public QSResponse {
+class Post : public Response {
     Q_OBJECT
 public:
-    QSPost(QSRequest *req);
+    Post(Request *req);
     virtual void service();
-    virtual ~QSPost() {}
+    virtual ~Post() {}
 
-    Q_INVOKABLE void _touch();
-    Q_INVOKABLE void _mkdir();
-    Q_INVOKABLE void makeWriterFile();
-    Q_INVOKABLE void stopWriterFile();
-#if defined(GSTREAMER) || defined(QTGSTREAMER)
-    Q_INVOKABLE void teeSourcePort();
-#endif
+    void _touch();
+    void _mkdir();
+    void makeWriterFile();
+    void stopWriterFile();
+    void teeSourcePort();
 };
 
-class QSThread;
+class Thread;
 
 /**
- * @brief The QSPatch class : HTTP PATCH
+ * @brief The Patch class : HTTP PATCH
  */
-class QSPatch : public QSResponse {
+class Patch : public Response {
     Q_OBJECT
 
 public:
-    QSPatch(QSRequest *req);
+    Patch(Request *req);
     virtual void service();
-    virtual ~QSPatch() {}
+    virtual ~Patch() {}
 public:
-    Q_INVOKABLE void _routes();
-    Q_INVOKABLE void _devices();
-    Q_INVOKABLE void _status();
-    Q_INVOKABLE void _meta();
-    Q_INVOKABLE void _connect();
-    Q_INVOKABLE void _connectSource();
-    Q_INVOKABLE void _disconnect();
-    Q_INVOKABLE void _scan();
-    Q_INVOKABLE void _openPipe();
-    Q_INVOKABLE void _config();
-    Q_INVOKABLE void _shutdown();
-    Q_INVOKABLE void _restart();
-    Q_INVOKABLE void _removeSource();
+    void _routes();
+    void _devices();
+    void _status();
+    void _meta();
+//    void _connect();
+//    void _connectSource();
+//    void _disconnect();
+//    void _scan();
+    void _openPipe();
+    void _config();
+    void _shutdown();
+    void _restart();
+    void _removeSource();
 public slots:
     void timedOut();
     void writeToSocket();
 };
 
-class QSDummy : public QSResponse
+class Dummy : public Response
 {
-    Q_OBJECT
-
 public:
-    QSDummy(QSRequest *req):QSResponse(req){}
+    Dummy(Request *req):Response(req){}
     virtual void service();
-    Q_INVOKABLE void catchall();
+    void catchall();
 };
+
+} // namespace drumlin
 
 #endif // RESPONSE_H

@@ -147,9 +147,7 @@ void JsonConfig::load(std::string const& path)
  */
 void JsonConfig::load(istream &device)
 {
-    byte_array data;
-    strm >> data;
-    from(data.string());
+    from(byte_array::readAll(device).string());
     emit afterLoad(json);
 }
 

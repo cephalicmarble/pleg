@@ -68,19 +68,15 @@ namespace po = boost::program_options;
 #include <memory>
 #include <libgen.h>
 #include "server.h"
-#include "bluetooth.h"
+//#include "bluetooth.h"
 #include "gstreamer.h"
 #include "source.h"
 #include "test.h"
 #include "uri.h"
 #include "event.h"
-#include "jsonmodel.h"
-#include "control.h"
 #include "cursor.h"
 #include "gstreamer.h"
-#include "jsonmodel.h"
 #include "jsonconfig.h"
-#include "httprequest.h"
 #include "application.h"
 
 using namespace std;
@@ -261,19 +257,19 @@ int main(int argc, char *argv[])
         }
         if(vm.count("udp")){
             Thread *thread = new Thread("UDP");
-            new Test(thread,host,port,UDP);
+            new Test<asio::ip::udp>(thread,host,port,UDP);
             app->addThread(thread,true);
         }
-        if(vm.count("uri")){
-            bluet = app->startBluetooth("mock",config);
-            bluet->defineMockSources();
-        }
-        if(vm.count("bluetooth")){
-            app->startBluetooth(bluetooth.c_str(),config);
-        }
-        if(vm.count("scan")){
-            app->startBluetooth("scan",config);
-        }
+//        if(vm.count("uri")){
+//            bluet = app->startBluetooth("mock",config);
+//            bluet->defineMockSources();
+//        }
+//        if(vm.count("bluetooth")){
+//            app->startBluetooth(bluetooth.c_str(),config);
+//        }
+//        if(vm.count("scan")){
+//            app->startBluetooth("scan",config);
+//        }
 
         retval = 0;
         a.exec();

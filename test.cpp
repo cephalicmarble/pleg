@@ -16,33 +16,11 @@ using namespace boost;
 #include "cursor.h"
 #include "application.h"
 #include "glib.h"
+using namespace drumlin;
+
+namespace Pleg {
 
 recursive_mutex Test::mutex;
-
-/**
- * @brief Test::Test
- * @param parent Object
- * @param _host host name or ip
- * @param _port number
- * @param _type TestType
- */
-Test::Test(Thread *_thread,string _host,gint16 _port,TestType _type)
-    : ThreadWorker(_thread),SocketTestHandler()
-{
-    tracepoint
-    type = _type;
-    host = _host;
-    port = _port;
-    connect(this,SIGNAL(signalRun(QObject*,Event*)),this,SLOT(run(QObject*,Event*)));
-}
-
-/**
- * @brief Test::~Test
- */
-Test::~Test()
-{
-    tracepoint
-}
 
 /**
  * @brief Test::run defines the test HTTP phrases, UDP preamble
@@ -50,7 +28,7 @@ Test::~Test()
 void Test::run(QObject *obj,Event *event)
 {
     tracepoint
-    QMutexLocker ml(&mutex);
+    lock_guard l(&mutex);
     Socket::SocketType socketType =
         type==TestType::UDP?Socket::SocketType::UdpSocket
                            :Socket::SocketType::TcpSocket;
@@ -264,72 +242,29 @@ void SocketTestHandler::disconnectedImpl(Socket *socket)
     ((Thread*)socket->getTag())->quit();
 }
 
-QMutex TestLoop::mutex(QMutex::Recursive);
-
-/**
- * @brief TestLoop::startBluetooth : thread starter
- * @param task const char*
- * @param config tring const&
- * @return Bluetooth* (BluetoothScanner*) if !strcmp(task,"scan")
- */
-Bluetooth *TestLoop::startBluetooth(const char *task,const tring &config)
-{
-    tracepoint
-    QMutexLocker ml(&mutex);
-    Thread *thread(new Thread(task));
-    Bluetooth *bluet;
-    if(!strcmp(task,"scan")){
-        bluet = new BluetoothScanner(thread,config);
-    }else{
-        bluet = new Bluetooth(thread);
-    }
-    app->addThread(thread,true);
-    return bluet;
-}
+///**
+// * @brief TestLoop::startBluetooth : thread starter
+// * @param task const char*
+// * @param config tring const&
+// * @return Bluetooth* (BluetoothScanner*) if !strcmp(task,"scan")
+// */
+//Bluetooth *TestLoop::startBluetooth(const char *task,const tring &config)
+//{
+//    tracepoint
+//    QMutexLocker ml(&mutex);
+//    Thread *thread(new Thread(task));
+//    Bluetooth *bluet;
+//    if(!strcmp(task,"scan")){
+//        bluet = new BluetoothScanner(thread,config);
+//    }else{
+//        bluet = new Bluetooth(thread);
+//    }
+//    app->addThread(thread,true);
+//    return bluet;
+//}
 
 TestLoop::TestLoop(int &argc,char *argv[])
     : Base(argc,argv)
 {
     terminator = (Terminator*)1;
-    installEventFilter(this);
-}
-
-
-/**
- * @brief TestLoop::eventFilter : virtual QObject::eventFilter
- * @param obj Object*
- * @param event QEvent*
- * @return bool
- */
-bool TestLoop::eventFilter(QObject *obj, QEvent *event)
-{
-try{
-    QMutexLocker ml(&mutex);
-    tracepoint
-    quietDebug() << QThread::currentThread() << __func__;
-    if((quint32)event->type() > (quint32)Event::Type::first
-    && (quint32)event->type() < (quint32)Event::Type::last){
-        switch((quint32)event->type()){
-        case Event::Type::ApplicationShutdown:
-        {
-            qDebug() << "Terminated...";
-            QCoreApplication::instance()->thread()->quit();
-            break;
-        }
-        case Event::Type::ApplicationThreadsGone:
-        {
-            Tracer::endTrace();
-            app->shutdown();
-            break;
-        }
-        default:
-            return false;
-        }
-        return true;
-    }
-    return false;
-}catch(QException &e){
-    quietDebug() << e.what();
-}
-    return false;
 }

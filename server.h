@@ -53,8 +53,8 @@ public:
     Route():method(NONE),parse_func(nullptr),response_func(nullptr){}
     Route(int _method,const UriParseFunc &&_parse_func,const char*_response_func)
         :method(_method),parse_func(std::move(_parse_func)),response_func(_response_func){}
-    std::string toStdString(bool detail = false)const{
-        tring str(metaEnum<verbs_type>().toString(method));
+    std::string toString(bool detail = false)const{
+        string str(metaEnum<verbs_type>().toString(method));
         str += " " + parse_func.pattern;
         if(detail){
             str += std::accumulate(parse_func.params.begin(), parse_func.params.end(), tring(),
@@ -63,7 +63,7 @@ public:
                 }
             );
         }
-        return str.toStdString();
+        return str;
     }
 };
 

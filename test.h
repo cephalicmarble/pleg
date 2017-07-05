@@ -6,6 +6,7 @@
 #include <memory>
 using namespace std;
 #include <boost/thread/recursive_mutex.hpp>
+#include <boost/thread/lock_guard.hpp>
 using namespace boost;
 #include "object.h"
 #include "thread.h"
@@ -34,13 +35,14 @@ typedef std::map<Test*,Socket*> socket_tests_type;
 /**
  * @brief handler for the test sockets
  */
+template <class SockType>
 class SocketTestHandler :
-        public SocketHandler
+        public SocketHandler<SockType>
 {
 protected:
-    tringList headers;
-    qint64 contentLength = -1;
-    tring content;
+    vector<string> headers;
+    gint64 contentLength = -1;
+    string content;
 public:
     SocketTestHandler();
     virtual ~SocketTestHandler(){}
@@ -56,26 +58,45 @@ public:
 /**
  * @brief The Test class : Runnable socket test class
  */
+template <class Protocol = asio::ip::tcp>
 class Test :
     public ThreadWorker,
-    public SocketTestHandler
+    public SocketTestHandler<typename Protocol::socket>
 {
-    Q_OBJECT
-
-    static QMutex mutex;
+    static recursive_mutex mutex;
     TestType type;
-    tring host;
-    quint16 port;
-    tring url;
-    tringList headers;
+    string host;
+    guint16 port;
+    string url;
+    vector<string> headers;
 public:
+    /**
+     * @brief Test::Test
+     * @param parent Object
+     * @param _host host name or ip
+     * @param _port number
+     * @param _type TestType
+     */
     Test(Thread *_thread,
-           tring _host = "localhost",
-           quint16 _port = 4999,
-           TestType _type = GET);
-    virtual ~Test();
-    Test *setRelativeUrl(tring url);
-    Test *setHeaders(const tringList &_headers);
+           string _host = "localhost",
+           guint16 _port = 4999,
+           TestType _type = GET)
+        : ThreadWorker(_thread),SocketTestHandler()
+    {
+        tracepoint;
+        type = _type;
+        host = _host;
+        port = _port;
+    }
+    /**
+     * @brief Test::~Test
+     */
+    ~Test()
+    {
+        tracepoint;
+    }
+    Test *setRelativeUrl(string url);
+    Test *setHeaders(vector<headers> &_headers);
     virtual void writeToStream(std::ostream &stream)const;
     virtual void shutdown();
     virtual void getStatus(json::value *status)const{}
@@ -87,15 +108,12 @@ public slots:
  * @brief The TestLoop struct
  */
 struct TestLoop :
-    public Application<QCoreApplication>
+    public Application<PlegApplication>
 {
-    Q_OBJECT
-    typedef Application<QCoreApplication> Base;
 public:
-    static QMutex mutex;
     TestLoop(int &argc,char *argv[]);
-    Bluetooth *startBluetooth(const char *task,const tring &config);
-    bool eventFilter(QObject *obj, QEvent *event);
 };
+
+} // namespace Pleg
 
 #endif // TEST_H

@@ -42,7 +42,7 @@ public:
         return pointer(new FullType());
     }
 
-    Socket& socket()
+    socket_type& socket()
     {
         return m_socket;
     }
@@ -58,11 +58,11 @@ private:
     {
         m_socket.close();
     }
-    Socket m_socket;
+    socket_type m_socket;
 };
 
 template <
-        class Connection = Connection<Socket>,
+        class Connection = Connection<typename Protocol::socket>,
         class Address = asio::ip::address_v4,
         class Protocol = asio::ip::tcp>
 class AsioServer

@@ -59,3 +59,5 @@ gstreamer.h
 pleg.cpp
 log.cpp
 log.h
+byte_array.h
+byte_array.cpp

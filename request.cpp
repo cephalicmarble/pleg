@@ -6,6 +6,7 @@ using namespace Pleg;
 #include <memory>
 #include <sstream>
 using namespace std;
+#include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 using namespace boost;
 #include "application.h"
@@ -42,10 +43,8 @@ Request::~Request()
  */
 void Request::run(Object *obj,Event *event)
 {
-    socket->setTag(getThread());
-    while(socket->async_receive(
-
-TODO receive asynchronously
+    socket()->setTag(getThread());
+    socket()->blockingRead();
 }
 
 void Request::connection_start()
@@ -69,7 +68,7 @@ bool Request::readyProcess(Socket*)
  * @brief Request::completingImpl : write a debug string
  * @param bytes quint32 number of bytes written
  */
-void Request::completing(Socket *,qint64 bytes)
+void Request::completing(Socket *socket,qint64 bytes)
 {
     qDebug() << socket << "wrote" << bytes << "bytes.";
 //    QThread::sleep(1);
@@ -80,22 +79,24 @@ void Request::completing(Socket *,qint64 bytes)
  * @brief Request::processTransmissionImpl : do HTTP protocol parse
  * @return
  */
-bool Request::processTransmission(Socket *)
+bool Request::processTransmission(Socket *socket)
 {
-    QList<tring> lines = tring(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush)).split("\r\n");
-    for(tring &line : lines){
+    vector<string> lines;
+    algorithm::split(lines,string(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush)),"\r\n",algorithm::token_compress_off);
+    for(string &line : lines){
         if(verb == verbs_type::NONE) {
-            QList<tring> parts = line.split(' ',tring::SplitBehavior::SkipEmptyParts);
+            vector<string> parts;
+            algorithm::split(parts,line,' ',algorithm::token_compress_on);
             if(parts.length()<3 || (parts[2].trimmed().compare("HTTP/1.1") && parts[2].trimmed().compare("HTTP/1.0"))){
-                qCritical() << "Bad HTTP";
+                Critical() << "Bad HTTP";
                 socket->close();
                 return false;
             }
-            tring verbp(parts[0]);
+            string verbp(parts[0]);
             bool ok = false;
-            verb = (verbs_type)QMetaEnum::fromType<verbs_type>().keyToValue(verbp.toStdString().c_str(),&ok);
+            verb = (verbs_type)metaEnum<verbs_type>().toEnum(verbp,&ok);
             if(!ok){
-                qCritical() << "Bad HTTP verb";
+                Critical() << "Bad HTTP verb";
                 socket->close();
                 return false;
             }
@@ -105,7 +106,8 @@ bool Request::processTransmission(Socket *)
                 if(!line.length()){
                     moreHeaders = false;
                 }else{
-                    QList<tring> parts = line.split(':');
+                    vector<string> parts;
+                    algorithm::split(parts,line,':',algorithm::token_compress_on);
                     if(parts.length()>1)
                         headers.insert(parts[0].trimmed(),parts[1].trimmed());
                 }
@@ -113,7 +115,7 @@ bool Request::processTransmission(Socket *)
                 body.append(line);
             }
         }
-        qDebug() << line;
+        Debug() << line;
     }
     if(verb != verbs_type::NONE && !moreHeaders){
         if(!getHeader("X-Method").compare("PATCH")){
@@ -154,11 +156,13 @@ bool Request::replyImpl(Socket *) {
  */
 void Request::end()
 {
-    qDebug() << "finished";
-    tringList msg;
-    msg << QMetaEnum::fromType<verbs_type>().valueToKey(verb) << url << "finished.";
+    Debug() << "finished";
+    vector<string> msg;
+    msg.push_back(verb);
+    msg.push_back(url);
+    msg.push_back("finished.");
     response->headers << "Access-Control-Allow-Origin: *";
-    tring headers(response->headers.join("\r\n"));
+    string headers(response->headers.join("\r\n"));
     std::stringstream ss;
     ss << "HTTP/1.1 " << response->getStatusCode() << "\r\n";
     ss << headers.toStdString() << "\r\n";

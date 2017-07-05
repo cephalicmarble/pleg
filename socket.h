@@ -10,6 +10,7 @@ using namespace std;
 #include <boost/utility/enable_if.hpp>
 #include <boost/type_traits/is_pointer.hpp>
 #include <boost/asio.hpp>
+#include <boost/asio/buffer.hpp>
 using namespace boost;
 #include "byte_array.h"
 #include "buffer.h"
@@ -44,62 +45,6 @@ enum SocketFlushBehaviours {
 template <class SockType>
 class Socket;
 
-/*
- * Buffer union class to allow single buffering.
- */
-namespace Socket {
-    /**
-     * @brief The BufferType enum :
-     * CacheBuffer = 1  Buffer*
-     * FreeBuffer = 2   void*
-     */
-    enum BufferType {
-        CacheBuffer,
-        FreeBuffer
-    };
-    /**
-     * @brief The Buffer struct
-     */
-    struct Buffer {
-        BufferType type;
-        typedef void *ptr_type;
-        struct free_buffer_t {
-            char* data;
-            gint64 len;
-        };
-        union buffers_t {
-            const Buffers::Buffer *_buffer;
-            free_buffer_t free_buffer;
-            buffers_t(){}
-            ~buffers_t(){}
-        }buffers;
-    public:
-        Buffer(ptr_type _data,gint64 _len);
-        Buffer(byte_array const& bytes);
-        Buffer(tring const& );
-        Buffer(const char *cstr);
-        Buffer(const Buffers::Buffer *buffer);
-        operator byte_array();
-        ~Buffer();
-        template <class T>
-        const T*data()
-        {
-            switch(type){
-            case FreeBuffer:
-                return (const T*)buffers.free_buffer.data;
-            case CacheBuffer:
-                return buffers._buffer->data<T>();
-            }
-            return nullptr;
-        }
-        gint64 length();
-    };
-    /**
-     * @brief buffers_type : the type of the socket's internal buffer vector
-     */
-    typedef std::list<std::unique_ptr<Buffer>> buffers_type;
-}
-
 /**
  * @brief The SocketHandler class : abstract class to generalize over sockets
  */
@@ -107,9 +52,6 @@ template <class SockType>
 class SocketHandler {
 protected:
     typedef drumlin::Socket<SockType> Socket;
-    /*
-     * These functions apply QMutexLocker to the socket mutex.
-     */
     virtual bool processTransmission(Socket *socket)=0;
     virtual bool receivePacket(Socket *socket)=0;
     virtual bool readyProcess(Socket *socket)=0;
@@ -117,29 +59,30 @@ protected:
     virtual void completing(Socket *socket, qint64 written)=0;
     virtual void sort(Socket *socket,Socket::buffers_type &buffers)=0;
     virtual void disconnected(Socket *socket)=0;
-    virtual ~SocketHandler(){}
-    /*
-     * Necessary
-     */
-    friend class Socket;
 };
+
+#define READLOCK  lock_guard l1(&read_buffer_mutex);
+#define WRITELOCK lock_guard l2(&write_buffer_mutex);
 
 /**
  * @brief The Socket class
  */
-template <class Socket = asio::ip::tcp::socket>
+template <class SockType= asio::ip::tcp::socket>
 class Socket
 {
 public:
     typedef SocketHandler<SockType> Handler;
     Socket(SockType &sock_type,Object *parent = 0,Handler *handler = 0):m_sock_type(sock_type),handler(_handler)
     {
+        READLOCK
+        WRITELOCK
         readBuffers.clear();
         writeBuffers.clear();
     }
     ~Socket()
     {
-        lock_guard l1(&read_buffer_mutex);
+        READLOCK
+        WRITELOCK
         m_sock_type.disconnect();
         writeBuffers.erase(std::remove_if(writeBuffers.begin(),writeBuffers.end(),[](auto &a){return true;}),writeBuffers.end());
         readBuffers.erase(std::remove_if(readBuffers.begin(),readBuffers.end(),[](auto &a){return true;}),readBuffers.end());
@@ -158,7 +101,19 @@ public:
     bool disconnectSlots();
     gint64 bytesToWrite()const{ return numBytes; }
 
-    void getStatus(json::value *status);
+    void getStatus(json::value *status)
+    {
+        json::object_t &obj(status->get_object());
+        obj.insert({"available",bytesAvailable()});
+        obj.insert({"buffered",bytesToWrite()});
+    }
+
+    void blockingRead()
+    {
+        while(m_sock_type.available() && !closing && !finished){
+            ReadyRead();
+        }
+    }
 protected:
     bool connectSlots();
     /**
@@ -200,7 +155,7 @@ public:
     template <class T,typename boost::disable_if<typename boost::is_pointer<T>::type,int>::type = 0>
     gint64 write(T const& t,bool prepend = false)
     {
-        lock_guard l(&mutex);
+        WRITELOCK;
         numBytes += t.length();
         if(prepend)
             writeBuffers.push_front(Socket::buffers_type::value_type(new Socket::Buffer(t)));
@@ -217,7 +172,7 @@ public:
     template <class T,typename boost::enable_if<typename boost::is_pointer<T>::type,int>::type = 0>
     gint64 write(T const t,bool prepend = false)
     {
-        lock_guard l(&mutex);
+        WRITELOCK;
         numBytes += t->length();
         if(prepend)
             writeBuffers.push_front(Socket::buffers_type::value_type(new Socket::Buffer(*t)));
@@ -226,12 +181,171 @@ public:
         return numBytes;
     }
 
-    gint64 flushWriteBuffer();
-    gint64 complete();
+    /**
+     * @brief Socket::BytesWritten : closes the socket if write queue extremum has been reached [slot]
+     * @param num qint64
+     */
+    void BytesWritten(gint64 num)
+    {
+        if(finished && (numBytes = qMax((gint64)0,numBytes-num)) <= 0){
+            closing = true;
+        }
+    }
+
+    /**
+     * @brief Socket::ReadyRead : respond to bytes on the channel [slot]
+     */
+    void ReadyRead()
+    {
+        if(finished){
+            return;
+        }
+        const qint64 bufsize = 1024;
+        char buf[bufsize];
+        {
+            READLOCK;
+            qint64 nread = 1;
+            do{
+                nread = m_sock_type.read(buf,bufsize);
+                if(0<nread)readBuffers.push_back(Socket::buffers_type::value_type(new Socket::Buffer(buf,nread)));
+            }while(nread > 0);
+        }
+        if(!handler)
+            return;
+        bool replying = false;
+        if(socketType() == SocketType::TcpSocket) {
+            if(handler->readyProcessImpl(this)){
+                qDebug() << this << "::processTransmission";
+                replying = handler->processTransmissionImpl(this);
+            }
+        }else{
+            qDebug() << this << "::receivePacket";
+            replying = handler->receivePacketImpl(this);
+        }
+        if(replying){
+            qDebug() << this << "::reply";
+            replying = false;
+            setFinished(handler->replyImpl(this));
+        }
+    }
+
+    /**
+     * @brief Socket::Disconnect : respond to disconnection [slot]
+     */
+    void Disconnect()
+    {
+        if(handler)
+            handler->disconnectedImpl(this);
+    }
+
+    /**
+     * @brief Socket::peekData : look into the read queue, maybe cause processing (see SocketHandler::sort)
+     * @param flushBehaviours quint8
+     * @return byte_array
+     */
+    byte_array peekData(guint8 flushBehaviours)
+    {
+        READLOCK;
+        byte_array allRead;
+        if(handler && flushBehaviours & SocketFlushBehaviours::Sort){
+            handler->sortImpl(this,readBuffers);
+        }
+        if(flushBehaviours & SocketFlushBehaviours::Coalesce){
+            for_each(readBuffers.begin(),readBuffers.end(),[&allRead](Socket::buffers_type::value_type &buf){
+                allRead.append(*buf);
+            });
+            if(flushBehaviours & SocketFlushBehaviours::Flush){
+                readBuffers.clear();
+            }
+        }else{
+            allRead.append(*readBuffers.front());
+        }
+        if(flushBehaviours & SocketFlushBehaviours::Flush){
+            readBuffers.clear();
+        }
+        return allRead;
+    }
+
+    /**
+     * @brief Socket::flushWriteBuffer : send all the data to the comms channel
+     * @return qint64
+     */
+    gint64 flushWriteBuffer()
+    {
+        WRITELOCK;
+        Debug() << this << "  flushWriteBuffer";
+        writeBuffers.erase(remove_if(writeBuffers.begin(),writeBuffers.end(),[&written,this](const Socket::buffers_type::value_type &buf){
+            addBytes(buf->length());
+            gint64 result;
+            try{
+                result = writeData(buf->data<char>(),buf->length());
+                if(result<0){
+                    Debug() << "writeData returned " << result;
+                }
+            }catch(...){
+                result = 0;
+            }
+            written += result;
+            return true;
+        }),writeBuffers.end());
+        Debug() << this << "wrote" << written << "bytes";
+        return written;
+    }
+
+    /**
+     * @brief Socket::complete : flush and disconnectSlots
+     * @return qint64
+     */
+    gint64 Socket::complete()
+    {
+        setFinished(true);
+        gint64 written(flushWriteBuffer());
+        if(handler)
+            handler->completingImpl(this,written);
+        return written;
+    }
+
+    /**
+     * @brief Socket::write : buffer some const char* data
+     * @param cstr const char*
+     * @return quint64
+     */
+    gint64 Socket::write(const char *cstr,bool prepend)
+    {
+        WRITELOCK;
+        numBytes += strlen(cstr);
+        if(prepend)
+            writeBuffers.push_front(Socket::buffers_type::value_type(new Socket::Buffer(cstr)));
+        else
+            writeBuffers.push_back(Socket::buffers_type::value_type(new Socket::Buffer(cstr)));
+        return numBytes;
+    }
+
+    gint64 Socket::write(Buffers::Buffer *buffer,bool prepend)
+    {
+        WRITELOCK;
+        numBytes += buffer->length();
+        if(prepend)
+            writeBuffers.push_front(Socket::buffers_type::value_type(new Socket::Buffer(buffer)));
+        else
+            writeBuffers.push_back(Socket::buffers_type::value_type(new Socket::Buffer(buffer)));
+        return numBytes;
+    }
+
+    gint64 Socket::write(byte_array const& bytes, bool prepend)
+    {
+        WRITELOCK;
+        numBytes += bytes.length();
+        if(prepend)
+            writeBuffers.push_front(Socket::buffers_type::value_type(new Socket::Buffer(bytes)));
+        else
+            writeBuffers.push_back(Socket::buffers_type::value_type(new Socket::Buffer(bytes)));
+        return numBytes;
+    }
 
     friend class SocketHandler;
 private:
-    static recursive_mutex mutex;
+    recursive_mutex write_buffer_mutex;
     recursive_mutex read_buffer_mutex;
     Socket::buffers_type writeBuffers;
     Socket::buffers_type readBuffers;
