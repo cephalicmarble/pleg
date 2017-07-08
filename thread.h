@@ -84,7 +84,7 @@ public:
     virtual void quit();
     void post(Event *);
     operator const char*()const;
-    friend std::ostream &operator<<(ostream &stream,const Thread &rel);
+    friend logger &operator<<(logger &stream,const Thread &rel);
     friend class ThreadWorker;
     void wait(gint64 millis = -1){
         if(millis<0)

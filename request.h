@@ -33,6 +33,7 @@ class Request :
 public:
     typedef Connection<asio::ip::tcp> connection_type;
     typedef typename connection_type::socket_type Socket;
+    typedef writeHandler<asio::ip::tcp> writeHandler_type;
     typedef map<string,string> headers_type;
     Request(Pleg::Server *_server);
     virtual ~Request();
@@ -83,7 +84,7 @@ public:
     virtual bool processTransmission(Socket*);
     virtual bool readyProcess(Socket*);
     virtual bool reply(Socket*);
-    virtual void completing(Socket *,gint64 bytes);
+    virtual void completing(Socket *socket, writeHandler<Socket> *);
     virtual bool receivePacket(Socket *){return false;}
     virtual void sort(Socket *,drumlin::buffers_type &){}
     virtual void disconnected(Socket *){}
@@ -95,8 +96,9 @@ public:
     virtual bool event(Event *event);
 
     friend class Patch;
-    virtual void run(Object *obj,Event *event);
-    virtual void connection_start();
+    void work(Object *obj,Event *event);
+    void connection_start();
+    void error(boost::system::error_code ec);
 
 public:
     headers_type headers;

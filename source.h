@@ -279,7 +279,7 @@ public:
     MockSource();
     void start();
     virtual void writeNext(void *buf,guint32 len);
-    virtual uuids::uuid getUuid(){ return Pleg::string_gen("1"); }
+    virtual uuids::uuid getUuid(){ return Pleg::string_gen("01010101010101010101010101010101"); }
     void stop();
     void timedOut(const system::error_code& e);
 private:

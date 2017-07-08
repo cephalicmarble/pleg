@@ -45,6 +45,7 @@ public:
     }
 
     virtual void connection_start()=0;
+    virtual void error(boost::system::error_code ec)=0;
 
     Connection()
         : m_socket(io_service)
@@ -72,22 +73,26 @@ public:
     typedef typename Protocol::acceptor acceptor_type;
     typedef typename Protocol::resolver resolver_type;
     typedef AsioServer<connection_type,address_type,Protocol> server_type;
-    AsioServer(int port):addr(),m_endpoint(addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
+    AsioServer(string host,int port):addr(),m_endpoint(host.length()?addr.from_string(host):addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
     {
     }
     void start()
     {
         m_acceptor.listen(10);
         connection_type *new_connection = new connection_type(dynamic_cast<Pleg::Server*>(this));
+//        m_acceptor.accept(new_connection->socket().socket());
+//        cout << new_connection->socket().socket().available() << endl;
+//        new_connection->socket().socket().send(asio::buffer(string("BLARGLE")));
         m_acceptor.async_accept(new_connection->socket().socket(),
             boost::bind(&server_type::handle_accept, this, new_connection, boost::asio::placeholders::error));
     }
-    virtual void handle_accept(connection_type *new_connection,const boost::system::error_code &error)
+    virtual void handle_accept(connection_type *new_connection,boost::system::error_code error)
     {
         if(!error)
         {
             new_connection->connection_start();
         }else{
+            Critical() << error.message();
             delete new_connection;
         }
         start();

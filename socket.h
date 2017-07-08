@@ -31,6 +31,9 @@ using namespace boost;
 )
 ENUM(verbs_type,verbs)
 
+#define socketTasks (socketRead,socketWrite)
+ENUM(socketTask,socketTasks)
+
 namespace drumlin {
 
 /**
@@ -60,6 +63,12 @@ enum SocketFlushBehaviours {
 template <class Protocol>
 class Socket;
 
+template <class Protocol>
+class Connection;
+
+template <class Protocol>
+class writeHandler;
+
 /**
  * @brief The SocketHandler class : abstract class to generalize over sockets
  */
@@ -71,9 +80,119 @@ public:
     virtual bool receivePacket(Socket *socket)=0;
     virtual bool readyProcess(Socket *socket)=0;
     virtual bool reply(Socket *socket)=0;
-    virtual void completing(Socket *socket, gint64 written)=0;
+    virtual void completing(Socket *socket, writeHandler<Socket> *)=0;
     virtual void sort(Socket *socket,drumlin::buffers_type &buffers)=0;
     virtual void disconnected(Socket *socket)=0;
+};
+
+struct ISocketTask
+{
+    virtual ~ISocketTask(){}
+    virtual socketTask type()=0;
+    void setTaskFinished(bool flag)
+    {
+        m_finished = flag;
+    }
+private:
+    bool m_finished = false;
+};
+
+template <class Protocol>
+struct SocketAdapter
+{
+    typedef Socket<Protocol> socket_type;
+    SocketAdapter(Socket<Protocol> *);
+    drumlin::buffers_type &getWriteBuffers();
+    drumlin::buffers_type &getReadBuffers();
+    bool available();
+    void process();
+    void async_receive(ISocketTask *);
+    void async_send(ISocketTask *);
+    void error(boost::system::error_code ec);
+    void completing(writeHandler<Socket<Protocol>> *);
+    size_t writeQueueLength();
+private:
+    socket_type *m_socket;
+};
+
+template <class Socket,int N>
+class readHandler : public ISocketTask
+{
+public:
+    typedef typename Socket::socket_type socket_type;
+    readHandler(Socket *that):m_that(that)
+    {
+        kick();
+    }
+    void operator()(boost::system::error_code ec, std::size_t sz)
+    {
+        if(ec){
+            m_that.error(ec);
+            return;
+        }
+        m_sz = sz;
+        m_that.getReadBuffers().push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(recv_buf.data(),sz)));
+        if(m_that.available())
+            kick();
+        else{
+            setTaskFinished(true);
+            m_that.process();
+        }
+    }
+    void kick(){
+        m_that.async_receive(this);
+    }
+    socketTask type(){ return socketRead; }
+    friend class SocketAdapter<typename Socket::protocol_type>;
+private:
+    SocketAdapter<typename Socket::protocol_type> m_that;
+    std::size_t m_sz;
+    boost::array<char, N> recv_buf;
+};
+
+template <class Socket>
+class writeHandler : public ISocketTask
+{
+public:
+    typedef typename Socket::socket_type socket_type;
+    writeHandler(Socket *that):m_that(that)
+    {
+        kick();
+    }
+    void operator()(boost::system::error_code ec, std::size_t sz)
+    {
+        if(ec){
+            m_that.error(ec);
+            return;
+        }
+        drumlin::buffers_type::value_type &buffer(m_that.getWriteBuffers().front());
+        if(sz < (size_t)buffer->length()){
+            bytesWritten += sz;
+            m_sz += sz;
+            return;
+        }
+        m_that.getWriteBuffers().pop_front();
+        numWritten++;
+        if(m_that.writeQueueLength()){
+            kick();
+        }else{
+            setTaskFinished(true);
+            m_that.completing(this);
+        }
+    }
+    void kick(){
+        p_buffer = m_that.getWriteBuffers().front().get();
+        m_sz = 0;
+        m_that.async_send(this);
+    }
+    socketTask type(){ return socketWrite; }
+    friend class SocketAdapter<typename Socket::protocol_type>;
+private:
+    SocketAdapter<typename Socket::protocol_type> m_that;
+    std::size_t m_sz;
+    gint64 numWritten;
+    gint64 bytesWritten;
+    typename drumlin::buffers_type::value_type::element_type *p_buffer;
 };
 
 #define READLOCK  lock_guard<recursive_mutex> l1(read_buffer_mutex);
@@ -88,6 +207,12 @@ class Socket : public Object
 public:
     typedef SocketHandler<Protocol> Handler;
     typedef typename Protocol::socket socket_type;
+    typedef Protocol protocol_type;
+    typedef Socket<Protocol> Self;
+    typedef list<std::unique_ptr<ISocketTask>> task_list_type;
+    typedef readHandler<Self,1024> readHandler_type;
+    typedef writeHandler<Self> writeHandler_type;
+    typedef SocketAdapter<Protocol> adapter_type;
     Socket(boost::asio::io_service &io_service,Object *parent = 0,Handler *_handler = 0):Object(parent),handler(_handler),m_io_service(io_service),m_sock_type(io_service)
     {
         READLOCK
@@ -99,6 +224,7 @@ public:
     {
         READLOCK
         WRITELOCK
+        m_tasks.clear();
         writeBuffers.erase(std::remove_if(writeBuffers.begin(),writeBuffers.end(),[](auto &){return true;}),writeBuffers.end());
         readBuffers.erase(std::remove_if(readBuffers.begin(),readBuffers.end(),[](auto &){return true;}),readBuffers.end());
     }
@@ -106,7 +232,9 @@ public:
      * @brief setTag : associate a void* with the socket
      * @param _tag void*
      */
-    void setTag(void *_tag){tag = (void*)_tag;}
+    Self &setTag(void *_tag){ tag = (void*)_tag; return *this; }
+    Self &setConnection(Connection<Protocol> *connection){ m_connection = connection; return *this; }
+    Self &setHandler(Handler *_handler){ handler = _handler; return *this; }
     /**
      * @brief getTag : return the void* associated with the socket
      * @return void*
@@ -129,12 +257,6 @@ public:
     typedef SocketFlushBehaviours FlushBehaviours;
     gint64 bytesToWrite()const{ return numBytes; }
 
-    void blockingRead()
-    {
-        while(m_sock_type.available() && !closing && !finished){
-            ReadyRead();
-        }
-    }
 protected:
     /**
      * @brief Socket::setClosing : the socket ought to be closed
@@ -162,60 +284,30 @@ public:
         finished = f;
     }
 
-    /**
-     * @brief Socket::BytesWritten : closes the socket if write queue extremum has been reached [slot]
-     * @param num qint64
-     */
-    void BytesWritten(gint64 num)
+    void reading()
     {
-        if(finished && (numBytes = std::max((gint64)0,numBytes-num)) <= 0){
-            closing = true;
-        }
+        m_tasks.push_back(task_list_type::value_type(new readHandler_type(this)));
     }
 
-    /**
-     * @brief Socket::ReadyRead : respond to bytes on the channel [slot]
-     */
-    void ReadyRead()
+    void process()
     {
-        if(finished){
-            return;
-        }
-        {
-            READLOCK;
-            gint64 nread = 1;
-            do{
-                boost::array<char, 1024> recv_buf;
-                nread = m_sock_type.receive(asio::buffer(recv_buf));
-                readBuffers.push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(recv_buf.data(),nread)));
-            }while(nread > 0);
-        }
         if(!handler)
             return;
         bool replying = false;
-//        if(socketType() == SocketType::TcpSocket) {
-            if(handler->readyProcess(this)){
-                Debug() << this << "::processTransmission";
-                replying = handler->processTransmission(this);
-            }
-//        }else{
-//            Debug() << this << "::receivePacket";
-//            replying = handler->receivePacket(this);
-//        }
+        //        if(socketType() == SocketType::TcpSocket) {
+        if(handler->readyProcess(this)){
+            Debug() << this << "::processTransmission";
+            replying = handler->processTransmission(this);
+        }
+        //        }else{
+        //            Debug() << this << "::receivePacket";
+        //            replying = handler->receivePacket(this);
+        //        }
         if(replying){
             Debug() << this << "::reply";
             replying = false;
             setFinished(handler->reply(this));
         }
-    }
-
-    /**
-     * @brief Socket::Disconnect : respond to disconnection [slot]
-     */
-    void Disconnect()
-    {
-        if(handler)
-            handler->disconnected(this);
     }
 
     /**
@@ -247,49 +339,15 @@ public:
         return allRead;
     }
 
-    /**
-     * @brief Socket::flushWriteBuffer : send all the data to the comms channel
-     * @return qint64
-     */
-    gint64 flushWriteBuffer()
+    void writing()
     {
-        WRITELOCK;
-        Debug() << this << "  flushWriteBuffer";
-        gint64 written(0);
-        writeBuffers.erase(remove_if(writeBuffers.begin(),writeBuffers.end(),[&written,this](const drumlin::buffers_type::value_type &buf){
-            addBytes(buf->length());
-            gint64 result;
-            try{
-                system::error_code error;
-                result = m_sock_type.send(boost::asio::buffer(buf->data<char>(),buf->length()),0,error);
-                if(error == asio::error::eof){
-                    setFinished(true);
-                    return true;
-                }else if(error && error != asio::error::message_size){
-                    Critical() << error.message() << endl;
-                    return true;
-                }
-            }catch(...){
-                result = 0;
-            }
-            written += result;
-            return true;
-        }),writeBuffers.end());
-        Debug() << this << "wrote" << written << "bytes";
-        return written;
+        m_tasks.push_back(task_list_type::value_type(new writeHandler<Self>(this)));
     }
 
-    /**
-     * @brief Socket::complete : flush and disconnectSlots
-     * @return qint64
-     */
-    gint64 complete()
+    size_t writeQueueLength()
     {
-        setFinished(true);
-        gint64 written(flushWriteBuffer());
-        if(handler)
-            handler->completing(this,written);
-        return written;
+        WRITELOCK;
+        return distance(writeBuffers.begin(),writeBuffers.end());
     }
 
     /**
@@ -327,23 +385,12 @@ public:
         return numBytes;
     }
 
-    /**
-     * @brief Socket::write : buffer some const char* data
-     * @param cstr const char*
-     * @return quint64
-     */
-
-//    template<class Protocol>
-//    gint64 write<IBuffer*>(IBuffer *buffer,bool prepend);
-
-//    template<class Protocol>
-//    gint64 write<byte_array>(byte_array const& bytes, bool prepend);
-
     void getStatus(json::value &status);
 
     socket_type &socket(){return m_sock_type;}
 
     friend class SocketHandler<Protocol>;
+    friend class SocketAdapter<Protocol>;
 private:
     recursive_mutex write_buffer_mutex;
     recursive_mutex read_buffer_mutex;
@@ -352,10 +399,12 @@ private:
     bool finished = false;
     bool closing = false;
     gint64 numBytes = 0;
-    SocketHandler<Protocol> *handler;
+    SocketHandler<Protocol> *handler = nullptr;
+    Connection<Protocol> *m_connection = nullptr;
     void *tag;
     asio::io_service &m_io_service;
     socket_type m_sock_type;
+    task_list_type m_tasks;
 };
 
 } // namespace drumlin

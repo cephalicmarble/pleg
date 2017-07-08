@@ -80,6 +80,7 @@ namespace po = boost::program_options;
 #include "gstreamer.h"
 #include "jsonconfig.h"
 #include "application.h"
+#include "connection.h"
 using namespace drumlin;
 
 const char *nullstr = "";
@@ -110,7 +111,7 @@ int main(int argc, char *argv[])
     if(executable==server){
         GStreamer::gst_initializer init(&argc, &argv);
 
-        string trace;
+        string trace,host;
         int port;
 
         po::options_description desc(server);
@@ -119,11 +120,12 @@ int main(int argc, char *argv[])
             ("devices-config,f"    ,po::value<string>(&Config::devices_config_file)->default_value("devices.json")       ,"Devices config file path.")
             ("gstreamer-config,g"  ,po::value<string>(&Config::gstreamer_config_file)->default_value("gstreamer.json")   ,"gstreamer config file path.")
             ("files-config,o"      ,po::value<string>(&Config::files_config_file)->default_value("files.json")           ,"files config file path.")
-            ("debug,d"                                                                                                  ,"Prompt to continue")
-            ("all,a"                                                                                                    ,"Connect all sources in config at startup.")
-            ("gstreamer,G"                                                                                              ,"Connect all gstreamer sources in config at startup.")
-            ("mock,m"                                                                                                   ,"Connect mock source at startup.")
+            ("debug,d"                                                                                                   ,"Prompt to continue")
+            ("all,a"                                                                                                     ,"Connect all sources in config at startup.")
+            ("gstreamer,G"                                                                                               ,"Connect all gstreamer sources in config at startup.")
+            ("mock,m"                                                                                                    ,"Connect mock source at startup.")
             ("trace,t"             ,po::value<string>(&trace)->default_value("trace.json")                               ,"Attach trace process.")
+            ("address,a"           ,po::value<string>(&host)                                                             ,"Address to listen on")
             ("port,p"              ,po::value<int>(&port)->default_value(4999)                                           ,"Server port")
         ;
 
@@ -139,7 +141,7 @@ int main(int argc, char *argv[])
             scanf("Ready?");
         }
 
-        Pleg::Server a(argc,argv,port);
+        Pleg::Server a(argc,argv,host,port);
         drumlin::iapp = app = main_server = &a;
         Pleg::Server &server(a);
 
@@ -163,6 +165,7 @@ int main(int argc, char *argv[])
         server.start();
 
         try{
+            drumlin::io_service.run();
             retval = a.exec();
         }catch(Exception &e){
             Debug() << e.message;
@@ -183,28 +186,30 @@ int main(int argc, char *argv[])
         app = &a;
         drumlin::iapp = app;
 
-        string get,post,patch,host,port,bluetooth,trace;
+        drumlin::io_service.run();
+
+        string get = "/mock",post,patch = "/status",host,port,bluetooth = "scan",trace = "trace.json";
         string_list headers;
         int repeats;
 
         po::options_description desc(server);
         desc.add_options()
             ("help", "produce help message")
-            ("get,g"               ,po::value<string>(&get)->default_value("/status")                                    ,"GET test [/status].")
-            ("post,p"              ,po::value<string>(&post)->default_value("/status")                                   ,"POST test [/status].")
-            ("patch,s"             ,po::value<string>(&patch)->default_value("/status")                                  ,"PATCH test [/status].")
+            ("get,g"               ,po::value<string>(&get)                                                             ,"GET test [/status].")
+            ("post,p"              ,po::value<string>(&post)                                                            ,"POST test [/status].")
+            ("patch,s"             ,po::value<string>(&patch)                                                           ,"PATCH test [/status].")
             ("udp,u"                                                                                                    ,"Run the UDP test.")
             ("debug,d"                                                                                                  ,"Prompt to continue")
-            ("host,h"              ,po::value<string>(&host)->default_value("localhost")                                 ,"Host name of the server [localhost].")
-            ("port,P"              ,po::value<string>(&port)->default_value("4999")                                      ,"Port on the server.")
+            ("host,h"              ,po::value<string>(&host)->default_value("localhost")                                ,"Host name of the server [localhost].")
+            ("port,P"              ,po::value<string>(&port)->default_value("4999")                                     ,"Port on the server.")
             ("json,j"                                                                                                   ,"Content-Type: text/json")
-            ("headers,H"           ,po::value<vector<string>>(&headers)                                                  ,"headers for request.")
-            ("repeats,r"           ,po::value<int>(&repeats)->default_value(1)                                           ,"Number of repeated attempts")
+            ("headers,H"           ,po::value<vector<string>>(&headers)                                                 ,"headers for request.")
+            ("repeats,r"           ,po::value<int>(&repeats)->default_value(1)                                          ,"Number of repeated attempts")
             ("uri,U"                                                                                                    ,"Test UriParseFunc.")
-            ("bluetooth,B"         ,po::value<string>(&bluetooth)->default_value("scan")                                 ,"Bluetooth test")
+            ("bluetooth,B"         ,po::value<string>(&bluetooth)                                                       ,"Bluetooth test")
             ("scan,S"                                                                                                   ,"Scan for bluetooth devices.")
-            ("devices-config,f"    ,po::value<string>(&Config::devices_config_file)->default_value("devices.json")       ,"Devices config file path.")
-            ("trace,t"             ,po::value<string>(&trace)->default_value("trace.json")                               ,"Attach trace process.")
+            ("devices-config,f"    ,po::value<string>(&Config::devices_config_file)->default_value("devices.json")      ,"Devices config file path.")
+            ("trace,t"             ,po::value<string>(&trace)                                                           ,"Attach trace process.")
         ;
 
         po::variables_map vm;

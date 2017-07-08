@@ -90,7 +90,7 @@ bool Thread::event(Event *pevent)
 {
     if(!pevent)
         return false;
-    quietDebug() << this << __func__ << pevent->type();
+    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
     if((guint32)pevent->type() > (guint32)Event::Type::first
             || (guint32)pevent->type() > (guint32)Event::Type::last){
         return false;
@@ -101,12 +101,12 @@ bool Thread::event(Event *pevent)
         switch(pevent->type()){
         case Event::Type::ThreadShutdown:
         {
-            quietDebug() << pevent->type() << "invocation of" << pevent->getName();
+            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << "invocation of" << pevent->getName();
             quit();
             break;
         }
         default:
-            quietDebug() << pevent->type() << __func__ <<  "unimplemented";
+            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << __func__ <<  "unimplemented";
             return false;
         }
         return true;
@@ -129,6 +129,7 @@ void Thread::run()
     while(!getWorker() || !getWorker()->critical_section.try_lock()){
         this_thread::sleep_for(chrono::milliseconds(400));
     }
+    getWorker()->critical_section.unlock();
     getWorker()->work(nullptr,nullptr);
     ready = true;
     exec();
@@ -139,7 +140,6 @@ void Thread::run()
         worker = nullptr;
     }
     make_event(Event::Type::ThreadRemove,"removeThread",this)->punt();
-    getWorker()->critical_section.unlock();
 }
 
 void Thread::post(Event *event)
@@ -274,10 +274,10 @@ Thread::operator const char*()const
  * @param rhs Thread const&
  * @return std::ostream &
  */
-std::ostream &operator<<(std::ostream &stream,const Thread &rel)
+logger &operator<<(logger &stream,const Thread &rel)
 {
     stream << rel.getBoostThread().get_id();
-    rel.getWorker()->writeToStream(stream);
+    rel.getWorker()->writeToStream((ostream&)stream);
     return stream;
 }
 

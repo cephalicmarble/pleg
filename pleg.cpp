@@ -2,7 +2,7 @@
 
 #include <boost/algorithm/string.hpp>
 
-ostream& operator<< (ostream& strm, const boost::any& p)
+logger& operator<< (logger& strm, const boost::any& p)
 {
     mpl::for_each<value_types>(stream_operator_impl(strm,p));
     return strm;

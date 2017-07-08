@@ -30,7 +30,7 @@ recursive_mutex Server::mutex;
  * @brief Server::Server : only constructor
  * @param parent Object*
  */
-Server::Server(int argc,char **argv,int port) : ApplicationBase(argc,argv),ServerBase(port)
+Server::Server(int argc,char **argv,string address,int port) : ApplicationBase(argc,argv),ServerBase(address,port)
 {
 }
 

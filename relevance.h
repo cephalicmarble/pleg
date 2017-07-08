@@ -55,16 +55,17 @@ public:
     static Relevance fromSource(const Pleg::Sources::Source *source);
 
     bool operator==(const Relevance &)const;
-    friend ostream &operator<<(ostream &stream,const Relevance &rhs);
+    friend logger &operator<<(logger &stream,const Relevance &rhs);
 private:
     Pleg::Sources::Source *source = nullptr;
     string source_name = "";
     uuids::uuid uuid;
 };
 
-extern ostream &operator<<(ostream &stream,const Pleg::Relevance &rhs);
-
-extern std::ostream &operator<<(std::ostream &strm,uuids::uuid const& uuid);
+extern logger &operator<<(logger &stream,const Pleg::Relevance &rhs);
+extern stringstream &operator<<(stringstream &strm,uuids::uuid const& uuid);
+extern ostream &operator<<(ostream &strm,uuids::uuid const& uuid);
+extern logger &operator<<(logger &strm,uuids::uuid const& uuid);
 
 } // namespace Pleg
 

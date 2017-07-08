@@ -60,7 +60,7 @@ public:
     void (*afterLoad)(json::value *json) = nullptr;
 
 public:
-    friend ostream &operator<<(ostream &stream,const JsonConfig &rel);
+    friend logger &operator<<(logger &stream,const JsonConfig &rel);
 };
 
 #define JSON_OBJECT_PROP(parent,name) (*parent.find(name)).toObject()
@@ -75,6 +75,8 @@ extern string files_config_file;
 json::value *object(json::value *obj = 0);
 json::value *array(json::value *array = 0);
 size_t length(json::value *value);
+
+extern logger &operator<<(logger &stream,const JsonConfig &rel);
 
 }
 

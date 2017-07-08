@@ -22,10 +22,10 @@ Relevance::Relevance(bool _true):argParity(false),queryParity(false)
 {
     if(_true){
         source = (Sources::Source*)1;
-        uuid = string_gen("is all not one?");
+        uuid = string_gen("ffffffffffffffffffffffffffffffff");
     }else{
         source = nullptr;
-        uuid = string_gen("truthy");
+        uuid = string_gen("11111111111111111111111111111111");
     }
 }
 /**
@@ -40,7 +40,7 @@ Relevance::Relevance(Sources::Source *_source):argParity(false),queryParity(fals
         uuid = _source->getUuid();
     }else{
         source_name = "<empty>";
-        uuid = string_gen("empty");
+        uuid = string_gen("00000000000000000000000000000000");
     }
 }
 
@@ -143,7 +143,7 @@ void Relevance::operator=(const char *rhs)
         source_name = rhs;
         uuid = source->getUuid();
     }else{
-        uuid = string_gen("assigned empty");
+        uuid = string_gen("0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
     }
 }
 
@@ -232,19 +232,38 @@ bool Relevance::operator==(const Pleg::Relevance &rhs)const
  * @param rhs Relevance const&
  * @return std::ostream &
  */
-std::ostream &operator<<(std::ostream &stream,const Pleg::Relevance &rel)
+logger &operator<<(logger &stream,const Pleg::Relevance &rel)
 {
     if(!rel.source){
         stream << " relevance is irrelevant (tm)";
         return stream;
     }
-    stream << &rel
-           << " - name:" << rel.source_name
-           << " - uuid:" << rel.uuid;
+    stream << "{"
+           << "name:" << rel.source_name
+           << "uuid:" << rel.uuid
+           << "}";
     return stream;
 }
 
-std::ostream &operator<<(std::ostream &strm,uuids::uuid const& uuid)
+logger &operator<<(logger &strm,uuids::uuid const& uuid)
+{
+    strm << "0x";
+    for(int i=0;i<16;i++){
+        strm << uuid.data[i];
+    }
+    return strm;
+}
+
+stringstream &operator<<(stringstream &strm,uuids::uuid const& uuid)
+{
+    strm << "0x";
+    for(int i=0;i<16;i++){
+        strm << uuid.data[i];
+    }
+    return strm;
+}
+
+ostream &operator<<(ostream &strm,uuids::uuid const& uuid)
 {
     strm << "0x";
     for(int i=0;i<16;i++){

@@ -9,6 +9,7 @@ using namespace std;
 #include <boost/thread/lock_guard.hpp>
 #include <boost/regex.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 using namespace boost;
 #include "object.h"
 #include "cursor.h"
@@ -42,13 +43,6 @@ class SocketTestHandler :
 {
 public:
     typedef drumlin::Socket<Protocol> Socket;
-    virtual bool processTransmission(Socket*)=0;
-    virtual bool receivePacket(Socket*)=0;
-    virtual bool readyProcess(Socket*)=0;
-    virtual bool reply(Socket*)=0;
-    virtual void completing(Socket*,gint64)=0;
-    virtual void sort(Socket*,drumlin::buffers_type &)=0;
-    virtual void disconnected(Socket*)=0;
 protected:
     vector<string> headers;
     string::size_type contentLength = -1;
@@ -85,11 +79,10 @@ public:
            string _host,
            string _port,
            TestType _type)
-        : ThreadWorker(ThreadType_test,_thread),SockHandler(),Client(drumlin::io_service,host,std::atoi(port.c_str())),type(_type)
+        : ThreadWorker(ThreadType_test,_thread),SockHandler(),Client(drumlin::io_service,_host,lexical_cast<int>(_port))
+        ,type(_type),host(_host),port(_port)
     {
         tracepoint;
-        host = _host;
-        port = _port;
     }
     /**
      * @brief Test::~Test
@@ -181,11 +174,9 @@ public:
         }
         socket.write(algorithm::join(protocol," ") + "\r\n" + algorithm::join(headers,"\r\n") + "\r\n\r\n");
         Debug() << &socket << " writing";
-        socket.flushWriteBuffer();
+        socket.writing();
         Debug() << &socket << " spinning";
-        while(socket.socket().available()){
-            socket.ReadyRead();
-        }
+        socket.reading();
     }
     /**
      * @brief Test<>::processTransmission handles HTTP
@@ -247,7 +238,7 @@ public:
     {
         tracepoint
         socket->write(string("BLARGLE ARGLE"));
-        Debug() << socket << " wrote " << socket->flushWriteBuffer() << " bytes.";
+        socket->writing();
         return 0<=SockHandler::contentLength;
     }
     /**
@@ -255,10 +246,10 @@ public:
      * @param socket Socket*
      * @param written quint32
      */
-    void completing(Socket *socket,gint64 written)
+    void completing(Socket *socket, writeHandler<Socket> *)
     {
-        tracepoint
-        Debug() << socket << " wrote " << written << " bytes.";
+        if(socket->writeQueueLength())
+            return;
         socket->socket().close();
     }
 

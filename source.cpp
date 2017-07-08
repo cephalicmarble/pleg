@@ -150,7 +150,7 @@ guint32 GStreamerSampleSource::sizeT()
 
 uuids::uuid GStreamerSampleSource::getUuid()
 {
-    return Pleg::string_gen("gstreamer-sample");
+    return Pleg::string_gen("0f0f0f0f0f0f0f0f0101010101010101");
 }
 
 void GStreamerSampleSource::writeNext(void *mem,guint32 len)
@@ -232,7 +232,7 @@ guint32 GStreamerOffsetSource::sizeT()
 
 uuids::uuid GStreamerOffsetSource::getUuid()
 {
-    return Pleg::string_gen("gstreamer-offset");
+    return Pleg::string_gen("0f0f0f0f0f0f0f0f0202020202020202");
 }
 
 void GStreamerOffsetSource::writeNext(void *mem,guint32 len)

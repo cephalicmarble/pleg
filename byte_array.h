@@ -12,6 +12,7 @@ using namespace std;
 using namespace boost;
 #include "object.h"
 #include "glib.h"
+#include "logger.h"
 
 namespace drumlin {
 
@@ -101,7 +102,7 @@ public:
  */
 typedef std::list<std::unique_ptr<Buffer>> buffers_type;
 
-extern ostream& operator<< (ostream& strm, const drumlin::byte_array &bytes);
+extern logger& operator<< (logger& strm, const drumlin::byte_array &bytes);
 extern istream& operator>> (istream& strm, drumlin::byte_array &bytes);
 
 } // namespace drumlin

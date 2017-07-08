@@ -295,18 +295,6 @@ void JsonConfig::setDefaultValue(json::value *parent, const json::object_initial
 //    return devices;
 //}
 
-/**
- * @brief operator << : stream operator
- * @param stream std::ostream
- * @param rel JsonConfig
- * @return std::ostream
- */
-std::ostream &operator<<(std::ostream &stream,const JsonConfig &rel)
-{
-    json::to_stream(stream,*rel.json);
-    return stream;
-}
-
 std::string devices_config_file;
 std::string gstreamer_config_file;
 std::string files_config_file;
@@ -334,4 +322,16 @@ size_t length(json::value *value)
     }
 }
 
+/**
+ * @brief operator << : stream operator
+ * @param stream std::ostream
+ * @param rel JsonConfig
+ * @return std::ostream
+ */
+logger &operator<<(logger &stream,const JsonConfig &rel)
+{
+    json::to_stream(stream,*rel.json);
+    return stream;
 }
+
+} // namespace Config

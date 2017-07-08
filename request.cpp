@@ -44,10 +44,14 @@ Request::~Request()
 /**
  * @brief Request::run : the thread function
  */
-void Request::run(Object *,Event *)
+void Request::work(Object *,Event *)
 {
-    getSocketRef().setTag(getThread());
-    getSocketRef().blockingRead();
+    getSocketRef()
+        .setTag(getThread())
+        .setHandler(this)
+        .setConnection(this)
+        .reading()
+    ;
 }
 
 void Request::connection_start()
@@ -56,6 +60,12 @@ void Request::connection_start()
     thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()),this);
     Debug() << "Starting thread " << this << *thread;
     app->addThread(thread);
+}
+
+void Request::error(boost::system::error_code ec)
+{
+    Critical() << ec.message();
+    signalTermination();
 }
 
 /**
@@ -71,11 +81,11 @@ bool Request::readyProcess(Socket*)
  * @brief Request::completingImpl : write a debug string
  * @param bytes quint32 number of bytes written
  */
-void Request::completing(Socket *socket,gint64 bytes)
+void Request::completing(Socket *socket, writeHandler<Socket> *)
 {
-    Debug() << socket << "wrote" << bytes << "bytes.";
-//    QThread::sleep(1);
-    getThread()->quit();
+    if(socket->writeQueueLength())
+        return;
+    signalTermination();
 }
 
 /**
@@ -197,7 +207,7 @@ void Request::end()
     }
     ss << "\r\n";
     socket().write(ss.str(),true);
-    socket().complete();
+    socket().writing();
 }
 
 void Request::shutdown()
@@ -229,7 +239,7 @@ void Request::getStatus(json::value *status)const{
  */
 bool Request::event(Event *pevent)
 {
-    quietDebug() << this << __func__ << pevent->type();
+    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
     if((guint32)pevent->type() > (guint32)Event::Type::first
             && (guint32)pevent->type() < (guint32)Event::Type::last){
         switch(pevent->type()){
@@ -248,7 +258,7 @@ bool Request::event(Event *pevent)
             break;
         }
         default:
-            Debug() << type << __func__ <<  "unimplemented";
+            Debug() << metaEnum<verbs_type>().toString(verb) << __func__ <<  "unimplemented";
             return false;
         }
         return true;

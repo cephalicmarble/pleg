@@ -64,3 +64,5 @@ byte_array.cpp
 route.h
 format.h
 format.cpp
+logger.h
+logger.cpp

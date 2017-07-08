@@ -15,6 +15,8 @@ using namespace std;
 #include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
+#include "logger.h"
+using namespace drumlin;
 
 typedef mpl::vector<bool, short, unsigned short, int, unsigned int, long, unsigned long, long long, unsigned long long, float, double, long double, std::string> value_types;
 struct stream_operator_impl {
@@ -30,7 +32,7 @@ private:
     ostream &strm;
     const boost::any& p;
 };
-extern ostream& operator<< (ostream& strm, const boost::any& p);
+extern logger& operator<< (logger& strm, const boost::any& p);
 
 class string_list : public vector<string>
 {
@@ -72,7 +74,7 @@ namespace Pleg
     //FIXME
 }
 
-#define Debug() std::cerr
-#define Critical() std::cerr << "********"
+#define Debug() drumlin::logger(std::cerr)
+#define Critical() drumlin::logger(std::cerr) << "********"
 
 #endif // PLEG_H

@@ -80,7 +80,7 @@ public:
     template <class Response>
     std::vector<Route<Response>> const& getRoutes()const;
     void writeLog();
-    Server(int argc,char **argv,int port);
+    Server(int argc,char **argv,string address,int port);
     ~Server();
     /**
      * @brief Server::select_route : find a route
@@ -112,7 +112,7 @@ public:
     void getStatus(json::value *status)const;
 
     operator const char*()const;
-    friend ostream &operator<<(ostream &stream,const Server &rel);
+    friend logger &operator<<(logger &stream,const Server &rel);
     void stop();
     void start();
 private:

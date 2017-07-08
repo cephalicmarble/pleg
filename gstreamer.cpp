@@ -127,7 +127,7 @@ gboolean GStreamerPipe::handleMessage(GstBus *, GstMessage *msg)
             break;
         case GST_MESSAGE_STREAM_STATUS:
             gst_message_parse_stream_status(msg,&tp,&elem);
-            Debug() << "stream status: elem" << GST_ELEMENT_NAME(elem) << tp;
+            Debug() << "stream status: elem" << GST_ELEMENT_NAME(elem) << metaEnum<PipelineState>().toString((PipelineState)tp);
             break;
         case GST_MESSAGE_STREAM_START:
             gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PLAYING);
@@ -777,7 +777,7 @@ void GStreamer::shutdown()
  */
 bool GStreamer::event(Event *pevent)
 {
-    quietDebug() << this << __func__ << pevent->type();
+    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
     if((guint32)pevent->type() < (guint32)Event::Type::first
             || (guint32)pevent->type() > (guint32)Event::Type::last){
         return false;
