@@ -77,18 +77,12 @@ SourceBuffer::~SourceBuffer()
         Pleg::Allocator(CPS_call_void(Buffers::free,this));
 }
 
-posix_time::ptime Buffer::advanceClock()
-{
-    timestamp += posix_time::milliseconds(ttl);
-    return timestamp;
-}
-
 /**
  * @brief SourceBuffer::isDead : calculates whether buffer remains alive.
  */
 bool Buffer::isDead()const
 {
-    return timestamp <= posix_time::microsec_clock::universal_time();
+    return timestamp + posix_time::milliseconds(ttl) <= posix_time::microsec_clock::universal_time();
 }
 
 /**
@@ -125,7 +119,7 @@ heap_t::heap_t(int _total,size_t _size,void *_memory,void *__free,size_t _align,
     :allocated(0),total(_total),size(_size),align(_align),memory(_memory),_free(__free),max(_max)
 {
 #ifdef DEBUGHEAP
-    qDebug() << "HEAP" << total << "of" << size;
+    Debug() << "HEAP" << total << "of" << size;
 #endif
 }
 
@@ -153,7 +147,7 @@ char *heap_t::alloc()
     }));
     if(it != blocks.end()){
 #ifdef DEBUGHEAP
-        qDebug() << "REALLOCATED" << (void*)(*it).first << ":" << (void*)(*it).second;
+        Debug() << "REALLOCATED" << (void*)(*it).first << ":" << (void*)(*it).second;
 #endif
         (*it).first = (char*)1;
         allocated++;
@@ -214,7 +208,7 @@ void heap_t::free(char *block)
     if(it == blocks.end()){
 #ifdef DEBUGHEAP
         for(array_t::value_type &pair : blocks){
-            qDebug() << (void*)pair.first << ":" << (void*)pair.second;
+            Debug() << (void*)pair.first << ":" << (void*)pair.second;
         }
 #endif
         Critical() << "*****************Double free?*****************";
@@ -222,12 +216,12 @@ void heap_t::free(char *block)
     }
     allocated--;
 #ifdef DEBUGHEAP
-    qDebug() << "FREED" << (void*)(*it).first << ":" << (void*)(*it).second;
+    Debug() << "FREED" << (void*)(*it).first << ":" << (void*)(*it).second;
 #endif
     (*it).first = nullptr;
 #ifdef DEBUGHEAP
     for(array_t::value_type &pair : blocks){
-        qDebug() << (void*)pair.first << ":" << (void*)pair.second;
+        Debug() << (void*)pair.first << ":" << (void*)pair.second;
     }
 #endif
 }
@@ -281,13 +275,16 @@ int Allocator::registerSource(Sources::Source *source)
     if(tmp > 1){
         m = (1 + tmp) * (1<<PAGE_SHIFT);
     }
-    size_t size(m);
+//    size_t size(m);
     void *_free(malloc(m));
     if(!_free)
         throw new Exception("ENOMEM");
-    void *mem(std::align(alignof(unsigned char),size,_free,m));
-    if(!mem)
-        throw new Exception("ENOALIGN");
+    void *mem(_free);
+//    void *mem(std::align(alignof(guint8),size,_free,m));
+//    if(!mem)
+//        throw new Exception("ENOALIGN");
+//    if(mem!=_free)
+//        throw new Exception("DAFT");
     heaps.insert({source,new heap_t(n,sz,mem,_free,source->getAlign(),m)});
     return m;
 }
@@ -446,7 +443,6 @@ guint32 BufferCache::flushDeadBuffers()
 {
     guint32 c(0);
     buffers.erase(std::remove_if(buffers.begin(),buffers.end(),[this,&c](buffers_type::value_type &buffer){
-        buffer->advanceClock();
         if(buffer->isDead()){
             callSubscribed(buffer.get(),true);
             c++;

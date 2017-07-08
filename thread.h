@@ -18,6 +18,7 @@ using namespace drumlin;
     ThreadType_first,\
     ThreadType_http,\
     ThreadType_bluez,\
+    ThreadType_source,\
     ThreadType_gstreamer,\
     ThreadType_transform,\
     ThreadType_terminator,\

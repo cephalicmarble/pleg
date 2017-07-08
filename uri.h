@@ -33,8 +33,8 @@ struct UriParseFunc {
 
 namespace Uri {
 
-UriParseFunc parser(const string _pattern);
-UriParseFunc parser(const char *_pattern);
+extern UriParseFunc parser(const string _pattern);
+extern UriParseFunc parser(const char *_pattern);
 
 }
 

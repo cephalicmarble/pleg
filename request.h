@@ -80,11 +80,12 @@ public:
      */
     Server *getServer(){ return server; }
     void end();
+    void close();
 
     virtual bool processTransmission(Socket*);
     virtual bool readyProcess(Socket*);
     virtual bool reply(Socket*);
-    virtual void completing(Socket *socket, writeHandler<Socket> *);
+    virtual void completing(Socket *socket);
     virtual bool receivePacket(Socket *){return false;}
     virtual void sort(Socket *,drumlin::buffers_type &){}
     virtual void disconnected(Socket *){}

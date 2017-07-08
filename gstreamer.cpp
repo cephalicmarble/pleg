@@ -778,8 +778,8 @@ void GStreamer::shutdown()
 bool GStreamer::event(Event *pevent)
 {
     quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
-    if((guint32)pevent->type() < (guint32)Event::Type::first
-            || (guint32)pevent->type() > (guint32)Event::Type::last){
+    if((guint32)pevent->type() < (guint32)Event_first
+            || (guint32)pevent->type() > (guint32)Event_last){
         return false;
     }
     do{

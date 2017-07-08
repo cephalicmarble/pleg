@@ -91,14 +91,19 @@ bool Thread::event(Event *pevent)
     if(!pevent)
         return false;
     quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
-    if((guint32)pevent->type() > (guint32)Event::Type::first
-            || (guint32)pevent->type() > (guint32)Event::Type::last){
+    if((guint32)pevent->type() < (guint32)Event_first
+            || (guint32)pevent->type() > (guint32)Event_last){
         return false;
     }
     if((guint32)pevent->type() > (guint32)Event::Type::Thread_first
             && (guint32)pevent->type() < (guint32)Event::Type::Thread_last){
         quietDebug() << pevent->getName();
         switch(pevent->type()){
+        case Event::Type::ThreadWork:
+        {
+            getWorker()->work(event_cast<Object>(pevent)->getPointer(),pevent);
+            break;
+        }
         case Event::Type::ThreadShutdown:
         {
             quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << "invocation of" << pevent->getName();
@@ -130,7 +135,7 @@ void Thread::run()
         this_thread::sleep_for(chrono::milliseconds(400));
     }
     getWorker()->critical_section.unlock();
-    getWorker()->work(nullptr,nullptr);
+    make_event(Event::Type::ThreadWork,"work")->send(this);
     ready = true;
     exec();
     terminate();

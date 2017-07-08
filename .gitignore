@@ -4,3 +4,5 @@ Makefile
 cmake_install.cmake
 vendor/
 pleg.creator.user
+trace.json
+files/

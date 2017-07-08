@@ -117,6 +117,7 @@ public:
         once = false;
         return *this;
     }
+    ostream &getStream(){return stream;}
 private:
     ostream &stream;
     bool once = true;

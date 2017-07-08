@@ -7,6 +7,7 @@ using namespace boost;
 #include "gstreamer.h"
 #include "application.h"
 #include "event.h"
+#include "source.h"
 
 namespace Pleg {
 
@@ -23,6 +24,13 @@ namespace Pleg {
 //    app->addThread(thread,true);
 //    return bluet;
 //}
+
+void PlegApplication::startMock()
+{
+    Sources::MockSource *mock(new Sources::MockSource());
+    Sources::sources.add("mock",mock);
+    mock->start();
+}
 
 /**
  * @brief PlegApplication::startGstreamer : gstreamer thread starter

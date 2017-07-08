@@ -246,7 +246,7 @@ public:
      * @param socket Socket*
      * @param written quint32
      */
-    void completing(Socket *socket, writeHandler<Socket> *)
+    void completing(Socket *socket)
     {
         if(socket->writeQueueLength())
             return;

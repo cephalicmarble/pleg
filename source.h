@@ -95,29 +95,25 @@ public:
 /**
  * @brief The Source class : represents an abstract data source
  */
-template <size_t _len = 512>
+template <gint64 _len = 512>
 class BufferedSource :
     public Source
 {
-protected:
-    guint8 data[_len];
-    const guint32 maxlen = _len;
-    guint32 len;
-    uuids::uuid uuid;
 public:
+    typedef boost::array<guint8,_len> data_type;
     /**
      * @brief BufferedSource : default constructor
      */
     BufferedSource(std::string const& name):Source(name){}
 
-    guint8 *_data(){ return data; }
+    guint8 *_data(){ return data.data(); }
     /**
      * @brief BufferedSource::writeNext : buffer next sample
      */
     virtual void writeNextValue(const byte_array &value, const uuids::uuid &_uuid)
     {
         uuid = _uuid;
-        memcpy((void*)data,(void*)value.data(),len = std::min((guint32)value.length(),maxlen));
+        memcpy((void*)data.data(),(void*)value.data(),std::min(value.length(),_len));
     }
 
     /**
@@ -126,12 +122,12 @@ public:
      */
     virtual guint32 lengthData()
     {
-        return len;
+        return _len;
     }
 
     virtual guint32 sizeT()
     {
-        return maxlen;
+        return _len;
     }
 
     /**
@@ -144,7 +140,7 @@ public:
     {
         if(!lengthData())
             return 0;
-        memcpy(buf,(void*)data,lengthData());
+        memcpy(buf,(void*)data.data(),lengthData());
         return lengthData();
     }
 
@@ -154,12 +150,15 @@ public:
      */
     virtual uuids::uuid getUuid(){ return uuid; }
 
-    virtual size_t getAlign(){ return alignof(guint8); }
+    virtual size_t getAlign(){ return alignof(data_type); }
 
     /**
      * @brief operator const char *
      */
     virtual operator const char*(){ return "buffered"; }
+protected:
+    data_type data;
+    uuids::uuid uuid;
 };
 
 template <class T>
@@ -271,17 +270,19 @@ void getStatus(json::value *status);
  * @brief The MockSource class : enumerates the alphabet into a buffer
  */
 class MockSource :
-    public BufferedSource<32>,
+    public BufferedSource<sizeof(guint64)>,
     public WorkObject
 {
-    typedef BufferedSource<32> Base;
+    typedef BufferedSource<sizeof(guint64)> Base;
 public:
     MockSource();
     void start();
     virtual void writeNext(void *buf,guint32 len);
-    virtual uuids::uuid getUuid(){ return Pleg::string_gen("01010101010101010101010101010101"); }
+    uuids::uuid getUuid(){ return Pleg::string_gen("01010101010101010101010101010101"); }
+    guint32 getTTL(){ return 1000; }
     void stop();
     void timedOut(const system::error_code& e);
+    void report(json::value *,ReportType)const{}
 private:
     asio::deadline_timer timer;
 };

@@ -22,25 +22,24 @@ namespace Pleg {
 UriParseFunc::UriParseFunc(const string _pattern)
 {
     pattern = _pattern;
-    int hunchback;
-    if((hunchback = pattern.find_last_of('?') > pattern.find_last_of('}'))){ //have querystring
+    string::size_type hunchback = string::npos;
+    if((hunchback = pattern.find_last_of('?')) > pattern.find_last_of('}') || string::npos==pattern.find_last_of('}')){ //have querystring
         vector<string> queries;
         string haystack(pattern.substr(hunchback+1));
         algorithm::split(queries,haystack,algorithm::is_any_of(","),algorithm::token_compress_on);
         for(string const& str : queries){
             query.push_back(str);
         }
-    }else{
-        hunchback = -1;
     }
     vector<string> pat_parts;
-    string stringref(hunchback>=0?pattern.substr(0,hunchback):pattern);
-    algorithm::split(pat_parts,stringref,algorithm::is_any_of("/"),algorithm::token_compress_on);
+    string mid(hunchback!=string::npos?pattern.substr(0,hunchback):pattern);
+    algorithm::trim_if(mid,algorithm::is_any_of(" /"));
+    algorithm::split(pat_parts,mid,algorithm::is_any_of("/"),algorithm::token_compress_on);
     for(string const& part : pat_parts){
-        if(algorithm::find_head(part,1)=="{" && algorithm::find_tail(part,2)=="?}") {
+        if(algorithm::starts_with(part,"{") && algorithm::ends_with(part,"?}")) {
             parts.push_back("{?}");
             params.push_back(part.substr(1,part.length()-3));
-        }else if(algorithm::find_head(part,1)=="{" && algorithm::find_tail(part,1)=="}") {
+        }else if(algorithm::starts_with(part,"{") && algorithm::ends_with(part,"}")) {
             parts.push_back("{}");
             params.push_back(part.substr(1,part.length()-2));
         }else{
@@ -96,8 +95,9 @@ Relevance UriParseFunc::operator()(const string &url)const
                 return false;
         }
     }
-    vector<string> pat_parts;
     string mid(hunchback!=string::npos?url.substr(0,hunchback):url);
+    algorithm::trim_if(mid,algorithm::is_any_of(" /"));
+    vector<string> pat_parts;
     algorithm::split(pat_parts,mid,algorithm::is_any_of("/"),algorithm::token_compress_on);
     auto count(std::distance(pat_parts.begin(),pat_parts.end()));
     if(count > numMandatoryParts + numOptionalParts)
@@ -138,7 +138,7 @@ namespace Uri {
  * @param _pattern QString
  * @return QSUriParseFunc
  */
-UriParseFunc parser(const string _pattern)
+UriParseFunc parser(const string &_pattern)
 {
     return UriParseFunc(_pattern);
 }
@@ -150,7 +150,8 @@ UriParseFunc parser(const string _pattern)
  */
 UriParseFunc parser(const char *_pattern)
 {
-    return UriParseFunc(string(_pattern));
+    string s(_pattern);
+    return UriParseFunc(s);
 }
 
 }

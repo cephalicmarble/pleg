@@ -25,7 +25,7 @@ Relevance::Relevance(bool _true):argParity(false),queryParity(false)
         uuid = string_gen("ffffffffffffffffffffffffffffffff");
     }else{
         source = nullptr;
-        uuid = string_gen("11111111111111111111111111111111");
+        uuid = nil_gen();
     }
 }
 /**
@@ -39,8 +39,8 @@ Relevance::Relevance(Sources::Source *_source):argParity(false),queryParity(fals
         source_name = (const char*)*source;
         uuid = _source->getUuid();
     }else{
-        source_name = "<empty>";
-        uuid = string_gen("00000000000000000000000000000000");
+        source_name = nullptr;
+        uuid = nil_gen();
     }
 }
 
@@ -247,10 +247,7 @@ logger &operator<<(logger &stream,const Pleg::Relevance &rel)
 
 logger &operator<<(logger &strm,uuids::uuid const& uuid)
 {
-    strm << "0x";
-    for(int i=0;i<16;i++){
-        strm << uuid.data[i];
-    }
+    strm.getStream() << uuid;
     return strm;
 }
 
@@ -258,7 +255,7 @@ stringstream &operator<<(stringstream &strm,uuids::uuid const& uuid)
 {
     strm << "0x";
     for(int i=0;i<16;i++){
-        strm << uuid.data[i];
+        strm << ios_base::hex << uuid.data[i];
     }
     return strm;
 }
@@ -267,7 +264,7 @@ ostream &operator<<(ostream &strm,uuids::uuid const& uuid)
 {
     strm << "0x";
     for(int i=0;i<16;i++){
-        strm << uuid.data[i];
+        strm << ios_base::hex << uuid.data[i];
     }
     return strm;
 }

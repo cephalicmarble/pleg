@@ -65,6 +65,12 @@ void Request::connection_start()
 void Request::error(boost::system::error_code ec)
 {
     Critical() << ec.message();
+    close();
+}
+
+void Request::close()
+{
+    socket().socket().close();
     signalTermination();
 }
 
@@ -81,11 +87,11 @@ bool Request::readyProcess(Socket*)
  * @brief Request::completingImpl : write a debug string
  * @param bytes quint32 number of bytes written
  */
-void Request::completing(Socket *socket, writeHandler<Socket> *)
+void Request::completing(Socket *socket)
 {
     if(socket->writeQueueLength())
         return;
-    signalTermination();
+    close();
 }
 
 /**
@@ -98,7 +104,7 @@ bool Request::processTransmission(Socket *socket)
     string str(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush));
     string::size_type pos(string::npos);
     while((pos=str.find_first_of("\r\n"))!=string::npos)str.replace(pos,2,"¬");
-    algorithm::split(lines,str,algorithm::is_any_of("¬"),algorithm::token_compress_off);
+    algorithm::split(lines,str,algorithm::is_any_of("¬"),algorithm::token_compress_on);
     for(string &line : lines){
         if(verb == verbs_type::NONE) {
             vector<string> parts;
@@ -141,11 +147,15 @@ bool Request::processTransmission(Socket *socket)
                 body.append(line);
             }
         }
-        Debug() << line;
+        //Debug() << line;
     }
     if(verb != verbs_type::NONE && !moreHeaders){
         if(!getHeader("X-Method").compare("PATCH")){
             verb = verbs_type::PATCH;
+        }
+        Debug() << metaEnum<verbs_type>().toString(verb);
+        for(headers_type::value_type & hdr : headers){
+            Debug().getStream() << hdr.first << ":" << hdr.second;
         }
         return true;
     }
@@ -212,7 +222,7 @@ void Request::end()
 
 void Request::shutdown()
 {
-    signalTermination();
+    close();
 }
 
 /**
@@ -240,13 +250,13 @@ void Request::getStatus(json::value *status)const{
 bool Request::event(Event *pevent)
 {
     quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
-    if((guint32)pevent->type() > (guint32)Event::Type::first
-            && (guint32)pevent->type() < (guint32)Event::Type::last){
+    if((guint32)pevent->type() > (guint32)Event_first
+            && (guint32)pevent->type() < (guint32)Event_last){
         switch(pevent->type()){
         case Event::Type::GstStreamPort:
         {
             getSocketRef().write("Opened port:"+getRelevanceRef().arguments.at("port"));
-            signalTermination();
+            end();
             break;
         }
         case Event::Type::GstStreamFile:
@@ -254,7 +264,7 @@ bool Request::event(Event *pevent)
             getSocketRef().write("Writing file:"+getRelevanceRef().arguments.at("filepath"));
             Patch patch(this);
             patch._status();
-            signalTermination();
+            end();
             break;
         }
         default:

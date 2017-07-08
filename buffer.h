@@ -143,7 +143,6 @@ public:
     const T *data()const{ return (const T*)m_data; }
     guint32 length()const;
 
-    posix_time::ptime advanceClock();
     virtual bool isDead()const;
     virtual operator string()const;
     virtual operator byte_array()const;

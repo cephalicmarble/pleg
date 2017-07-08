@@ -212,8 +212,8 @@ bool Application<T>::event(Event *pevent)
         return true;
     }
     try{
-        if((guint32)pevent->type() < (guint32)Event::Type::first
-        || (guint32)pevent->type() > (guint32)Event::Type::last){
+        if((guint32)pevent->type() < (guint32)Event_first
+        || (guint32)pevent->type() > (guint32)Event_last){
             return false;
         }
         switch(pevent->type()){

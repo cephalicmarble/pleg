@@ -233,10 +233,10 @@ gint64 Get::readRange(ifstream &device,string mime,gint64 completeLength,string 
         char c;
         device >> c;
         bytes = ""+c;
-    }else if(algorithm::find_tail(range,1)=="-"){
+    }else if(algorithm::starts_with(range,"-")){
         device.seekg(lexical_cast<int>(range));
         device >> bytes;
-    }else if(algorithm::find_head(range,1)=="-"){
+    }else if(algorithm::starts_with(range,"-")){
         device.seekg(0);
         size_t sz(lexical_cast<int>(range.substr(1)));
         char *pc=(char*)malloc(sz);
@@ -347,7 +347,7 @@ void Get::_lsof()
     Files::Files::writers_vec_type writers(Files::files.list());
     for(Files::Files::writers_vec_type::value_type const& fileWriter : writers){
         string s(fileWriter->getFilePath());
-        if(algorithm::find_head(s,rpath.length()) != rpath)
+        if(!algorithm::starts_with(s,rpath))
             continue;
         if(rel.arguments.end() != rel.arguments.find("name")
                 &&

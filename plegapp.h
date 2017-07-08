@@ -9,7 +9,7 @@ using namespace drumlin;
  * @brief The Type enum from QEvent::Type::User to QEvent::Type::MaxUser
  */
 #define EventTypes (None,\
-    first,\
+    Event_first,\
     Request_first,\
     Request_close,\
     RequestResponse,\
@@ -49,6 +49,7 @@ using namespace drumlin;
     TracerBlock,\
 \
     Thread_first,\
+    ThreadWork,\
     ThreadWarning,\
     ThreadShutdown,\
     ThreadRemove,\
@@ -59,7 +60,7 @@ using namespace drumlin;
     ApplicationShutdown,\
     ApplicationRestart,\
 \
-    last\
+    Event_last\
 )
 ENUM(EventType,EventTypes)
 
@@ -82,6 +83,7 @@ class PlegApplication
 public:
     PlegApplication(int,char**){}
 //    Pleg::Bluetooth *startBluetooth(const char* task);
+    void startMock();
     Pleg::GStreamer::GStreamer *startGStreamer(const char* task);
     bool event(Event *);
 };

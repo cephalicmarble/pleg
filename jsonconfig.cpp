@@ -139,7 +139,9 @@ void JsonConfig::load(std::string const& path)
     if(!filesystem::exists(p))
         return;
     ifstream strm(path.c_str());
-    load(strm);
+    stringstream ss;
+    ss << strm.rdbuf();
+    from(ss.str());
 }
 
 /**

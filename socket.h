@@ -67,6 +67,8 @@ template <class Protocol>
 class Connection;
 
 template <class Protocol>
+class readHandler;
+template <class Protocol>
 class writeHandler;
 
 /**
@@ -80,7 +82,7 @@ public:
     virtual bool receivePacket(Socket *socket)=0;
     virtual bool readyProcess(Socket *socket)=0;
     virtual bool reply(Socket *socket)=0;
-    virtual void completing(Socket *socket, writeHandler<Socket> *)=0;
+    virtual void completing(Socket *socket)=0;
     virtual void sort(Socket *socket,drumlin::buffers_type &buffers)=0;
     virtual void disconnected(Socket *socket)=0;
 };
@@ -101,98 +103,15 @@ template <class Protocol>
 struct SocketAdapter
 {
     typedef Socket<Protocol> socket_type;
+    typedef SocketAdapter<Protocol> Self;
+    typedef typename Socket<Protocol>::recv_buf_type recv_buf_type;
+
     SocketAdapter(Socket<Protocol> *);
-    drumlin::buffers_type &getWriteBuffers();
-    drumlin::buffers_type &getReadBuffers();
-    bool available();
-    void process();
-    void async_receive(ISocketTask *);
-    void async_send(ISocketTask *);
+    SocketAdapter(Self &self):m_socket(self.m_socket){}
+
     void error(boost::system::error_code ec);
-    void completing(writeHandler<Socket<Protocol>> *);
-    size_t writeQueueLength();
 private:
     socket_type *m_socket;
-};
-
-template <class Socket,int N>
-class readHandler : public ISocketTask
-{
-public:
-    typedef typename Socket::socket_type socket_type;
-    readHandler(Socket *that):m_that(that)
-    {
-        kick();
-    }
-    void operator()(boost::system::error_code ec, std::size_t sz)
-    {
-        if(ec){
-            m_that.error(ec);
-            return;
-        }
-        m_sz = sz;
-        m_that.getReadBuffers().push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(recv_buf.data(),sz)));
-        if(m_that.available())
-            kick();
-        else{
-            setTaskFinished(true);
-            m_that.process();
-        }
-    }
-    void kick(){
-        m_that.async_receive(this);
-    }
-    socketTask type(){ return socketRead; }
-    friend class SocketAdapter<typename Socket::protocol_type>;
-private:
-    SocketAdapter<typename Socket::protocol_type> m_that;
-    std::size_t m_sz;
-    boost::array<char, N> recv_buf;
-};
-
-template <class Socket>
-class writeHandler : public ISocketTask
-{
-public:
-    typedef typename Socket::socket_type socket_type;
-    writeHandler(Socket *that):m_that(that)
-    {
-        kick();
-    }
-    void operator()(boost::system::error_code ec, std::size_t sz)
-    {
-        if(ec){
-            m_that.error(ec);
-            return;
-        }
-        drumlin::buffers_type::value_type &buffer(m_that.getWriteBuffers().front());
-        if(sz < (size_t)buffer->length()){
-            bytesWritten += sz;
-            m_sz += sz;
-            return;
-        }
-        m_that.getWriteBuffers().pop_front();
-        numWritten++;
-        if(m_that.writeQueueLength()){
-            kick();
-        }else{
-            setTaskFinished(true);
-            m_that.completing(this);
-        }
-    }
-    void kick(){
-        p_buffer = m_that.getWriteBuffers().front().get();
-        m_sz = 0;
-        m_that.async_send(this);
-    }
-    socketTask type(){ return socketWrite; }
-    friend class SocketAdapter<typename Socket::protocol_type>;
-private:
-    SocketAdapter<typename Socket::protocol_type> m_that;
-    std::size_t m_sz;
-    gint64 numWritten;
-    gint64 bytesWritten;
-    typename drumlin::buffers_type::value_type::element_type *p_buffer;
 };
 
 #define READLOCK  lock_guard<recursive_mutex> l1(read_buffer_mutex);
@@ -209,10 +128,8 @@ public:
     typedef typename Protocol::socket socket_type;
     typedef Protocol protocol_type;
     typedef Socket<Protocol> Self;
-    typedef list<std::unique_ptr<ISocketTask>> task_list_type;
-    typedef readHandler<Self,1024> readHandler_type;
-    typedef writeHandler<Self> writeHandler_type;
     typedef SocketAdapter<Protocol> adapter_type;
+    typedef boost::array<char, 1024> recv_buf_type;
     Socket(boost::asio::io_service &io_service,Object *parent = 0,Handler *_handler = 0):Object(parent),handler(_handler),m_io_service(io_service),m_sock_type(io_service)
     {
         READLOCK
@@ -224,7 +141,6 @@ public:
     {
         READLOCK
         WRITELOCK
-        m_tasks.clear();
         writeBuffers.erase(std::remove_if(writeBuffers.begin(),writeBuffers.end(),[](auto &){return true;}),writeBuffers.end());
         readBuffers.erase(std::remove_if(readBuffers.begin(),readBuffers.end(),[](auto &){return true;}),readBuffers.end());
     }
@@ -240,6 +156,7 @@ public:
      * @return void*
      */
     void *getTag(){ return tag; }
+    Connection<Protocol> *getConnection(){ return m_connection; }
     bool connectToHost(string host,string port)
     {
         typedef Protocol protocol_type;
@@ -286,7 +203,23 @@ public:
 
     void reading()
     {
-        m_tasks.push_back(task_list_type::value_type(new readHandler_type(this)));
+        socket().async_receive(asio::buffer(m_recv_buf.data(),m_recv_buf.max_size()),
+                               boost::bind(&Self::bytesRead,this,boost::asio::placeholders::error,boost::asio::placeholders::bytes_transferred));
+    }
+
+    void bytesRead(boost::system::error_code ec,size_t sz)
+    {
+        READLOCK;
+        readBuffers.push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(m_recv_buf.data(),sz)));
+        if(ec){
+            adapter_type(this).error(ec);
+            return;
+        }
+        m_bytes_transferred += sz;
+        process();
+        if(socket().available()){
+            reading();
+        }
     }
 
     void process()
@@ -341,7 +274,30 @@ public:
 
     void writing()
     {
-        m_tasks.push_back(task_list_type::value_type(new writeHandler<Self>(this)));
+        WRITELOCK;
+        auto p_buffer = writeBuffers.front().get();
+        socket().async_send(asio::buffer(p_buffer->data<void>(),p_buffer->length()),
+                            boost::bind(&Self::bytesWritten,this,boost::asio::placeholders::error,boost::asio::placeholders::bytes_transferred));
+    }
+
+    void bytesWritten(boost::system::error_code ec, std::size_t sz)
+    {
+        WRITELOCK;
+        if(ec){
+            adapter_type(this).error(ec);
+            return;
+        }
+        if(sz < (size_t)writeBuffers.front()->length()){
+            m_bytes_written += sz;
+            return;
+        }
+        writeBuffers.pop_front();
+        if(writeQueueLength()){
+            writing();
+        }else{
+            setFinished(true);
+            handler->completing(this);
+        }
     }
 
     size_t writeQueueLength()
@@ -392,6 +348,9 @@ public:
     friend class SocketHandler<Protocol>;
     friend class SocketAdapter<Protocol>;
 private:
+    std::size_t m_bytes_transferred;
+    recv_buf_type m_recv_buf;
+    std::size_t m_bytes_written;
     recursive_mutex write_buffer_mutex;
     recursive_mutex read_buffer_mutex;
     drumlin::buffers_type writeBuffers;
@@ -404,7 +363,6 @@ private:
     void *tag;
     asio::io_service &m_io_service;
     socket_type m_sock_type;
-    task_list_type m_tasks;
 };
 
 } // namespace drumlin

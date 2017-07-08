@@ -146,9 +146,10 @@ int main(int argc, char *argv[])
         Pleg::Server &server(a);
 
         string sz_all("all");
-//        if(vm.count("mock")){
-//            app->startBluetooth("mock");
-//        }else if(vm.count("all")){
+        if(vm.count("mock")){
+            app->startMock();
+        }
+//else if(vm.count("all")){
 //            ThreadWorker *worker = app->startBluetooth("sources");
 //            while(!worker->getThread()->isStarted())
 //                this_thread::yield();
