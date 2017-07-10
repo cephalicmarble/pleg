@@ -1,0 +1,32 @@
+/*
+ * webpack Shim
+ *
+ * Copyright 2016, Archibald Campbell
+ * https://www.claimableperch.com
+ *
+ * Licensed under the MIT license:
+ * http://www.opensource.org/licenses/MIT
+ */
+
+(function (factory) {
+    'use strict';
+    if (typeof define === 'function' && define.amd) {
+        // Register as an anonymous AMD module:
+        define([
+            %REQUIREMENTS%
+        ],factory);
+    } else if (typeof exports === 'object') {
+        // Node/CommonJS:
+        factory.apply(factory,[
+            %REQUIREMENTS%
+        ].map(function(r){
+            return require(r);
+        }));
+    } else {
+        // Browser globals:
+        factory(window.jQuery);
+    }
+}(function ($) {
+    'use strict';
+
+

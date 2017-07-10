@@ -5,4 +5,9 @@ cmake_install.cmake
 vendor/
 pleg.creator.user
 trace.json
+Server.log
 files/
+webapp/node_modules
+webapp/public
+webapp/nbproject
+

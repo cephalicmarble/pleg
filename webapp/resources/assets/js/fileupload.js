@@ -1,0 +1,20 @@
+require([
+    "tmpl",
+    "blueimp",
+    "load-image-meta",
+    "load-image-exif",
+    "jquery.ui.widget",
+    "jquery.ui.unique",
+    "jquery.ui.draggable",
+    "jquery.ui.droppable",
+    "jquery.ui.sortable",
+    "imports?define=>false&exports=>false!blueimp-file-upload/js/jquery.fileupload.js",
+    "imports?define=>false&exports=>false!blueimp-file-upload/js/jquery.fileupload-process.js",
+    "blueimp-file-upload/js/jquery.fileupload-image.js",
+    "blueimp-file-upload/js/jquery.fileupload-audio.js",
+    "blueimp-file-upload/js/jquery.fileupload-video.js",
+    "blueimp-file-upload/js/jquery.fileupload-validate.js",
+    "imports?define=>false&exports=>false!blueimp-file-upload/js/jquery.fileupload-ui.js",
+    "imports?define=>false!./vendor/blueimp-gallery/blueimp-gallery.min.js"],function(tmpl){
+    $.tmpl = tmpl;
+});
