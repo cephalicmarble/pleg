@@ -22,7 +22,7 @@ namespace Pleg {
 UriParseFunc::UriParseFunc(const string _pattern)
 {
     pattern = _pattern;
-    string::size_type hunchback = string::npos;
+    string::size_type hunchback;
     if((hunchback = pattern.find_last_of('?')) > pattern.find_last_of('}') || string::npos==pattern.find_last_of('}')){ //have querystring
         vector<string> queries;
         string haystack(pattern.substr(hunchback+1));
@@ -30,6 +30,8 @@ UriParseFunc::UriParseFunc(const string _pattern)
         for(string const& str : queries){
             query.push_back(str);
         }
+    }else{
+        hunchback = string::npos;
     }
     vector<string> pat_parts;
     string mid(hunchback!=string::npos?pattern.substr(0,hunchback):pattern);
@@ -55,9 +57,9 @@ UriParseFunc::UriParseFunc(const string _pattern)
 }
 
 /**
- * @brief QSUriParseFunc::operator () : Matches them to url path items.
- * @param url QString
- * @return QSRelevance
+ * @brief UriParseFunc::operator () : Matches them to url path items.
+ * @param url string
+ * @return Relevance
  */
 Relevance UriParseFunc::operator()(const string &url)const
 {
@@ -135,8 +137,8 @@ namespace Uri {
 
 /**
  * @brief parser : convenience namespace and function
- * @param _pattern QString
- * @return QSUriParseFunc
+ * @param _pattern string
+ * @return UriParseFunc
  */
 UriParseFunc parser(const string &_pattern)
 {
@@ -146,7 +148,7 @@ UriParseFunc parser(const string &_pattern)
 /**
  * @brief parser : convenience namespace and function
  * @param _pattern const char *
- * @return QSUriParseFunc
+ * @return UriParseFunc
  */
 UriParseFunc parser(const char *_pattern)
 {

@@ -35,7 +35,7 @@ public:
 };
 
 extern Files files;
-extern string virtualFilePath(string filepath,bool isDirectory = false);
+extern string virtualFilePath(string filepath);
 extern void getStatus(json::value *status);
 extern string treeAt(json::value *tree,string root);
 

@@ -12,24 +12,61 @@ namespace drumlin {
 
 extern boost::asio::io_service io_service;
 
+class IOService
+{
+public:
+    IOService():m_thread(&IOService::run,this){}
+    void run(){io_service.run();}
+    void stop(){io_service.stop();}
+private:
+    thread m_thread;
+};
+
+extern unique_ptr<IOService> io_thread;
+extern void start_io();
+
 template <class Protocol = asio::ip::tcp>
 class AsioClient
 {
 public:
+    typedef Protocol protocol_type;
+    typedef typename protocol_type::resolver resolver_type;
     typedef typename Protocol::endpoint Endpoint;
     typedef typename Protocol::socket Socket;
+    AsioClient(boost::asio::io_service& io_service,typename resolver_type::iterator resolver_iter)
+        :m_endpoint(*resolver_iter),m_socket(io_service)
+    {
+        m_socket.connect(m_endpoint);
+    }
     AsioClient(boost::asio::io_service& io_service,string host,int port)
         :m_endpoint(asio::ip::address::from_string(host),port),
          m_socket(io_service)
     {
         m_socket.connect(m_endpoint);
     }
-    Endpoint m_endpoint;
-    Socket m_socket;
     void disconnect()
     {
         m_socket.close();
     }
+    Socket *getAsioSocket()
+    {
+        return &m_socket;
+    }
+protected:
+    Endpoint m_endpoint;
+    Socket m_socket;
+//    static AsioClient<Protocol> resolve(boost::asio::io_service,string host,int port)
+//    {
+//        resolver_type resolver(io_service);
+//        typename protocol_type::resolver::query query(host,port);
+//        typename resolver_type::iterator iter = resolver.resolve(query);
+//        typename resolver_type::iterator end;
+//        while(iter != end){
+//            typename protocol_type::endpoint endpoint = *iter++;
+//            std::cout << endpoint << std::endl;
+//        }
+//        return true;
+//    }
 };
 
 template <class Protocol = asio::ip::tcp>
@@ -37,7 +74,9 @@ class Connection
   : public boost::enable_shared_from_this<Connection<Protocol>>
 {
 public:
+    typedef typename Protocol::socket asio_socket_type;
     typedef drumlin::Socket<Protocol> socket_type;
+    typedef SocketHandler<Protocol> handler_type;
 
     socket_type & socket()
     {
@@ -47,15 +86,15 @@ public:
     virtual void connection_start()=0;
     virtual void error(boost::system::error_code ec)=0;
 
-    Connection()
-        : m_socket(io_service)
+    Connection(handler_type *handler)
+        : m_asio_socket(io_service),m_socket(io_service,0,handler,&m_asio_socket)
     {
     }
     ~Connection()
     {
-        Critical() << "used to call socket.close()";
     }
 private:
+    asio_socket_type m_asio_socket;
     socket_type m_socket;
 };
 
@@ -91,11 +130,11 @@ public:
         if(!error)
         {
             new_connection->connection_start();
+            start();
         }else{
             Critical() << error.message();
             delete new_connection;
         }
-        start();
     }
     address_type addr;
     endpoint_type m_endpoint;

@@ -47,7 +47,7 @@ class Source :
 public:
     typedef SourceType Type;
 
-    Source(std::string const& _name):Object(),name(_name){}
+    Source(std::string _name):Object(),name(_name){}
     Source():Object(),name("source"){}
     virtual ~Source();
     virtual guint64 nextTick(){
@@ -61,7 +61,7 @@ public:
      * @param bytes void*
      * @param len quint32
      */
-    virtual void writeNext(void *, guint32){}
+    virtual void writeNextHere(void *, guint32){}
     virtual void writeNext();
     virtual guint32 lengthData(){ return 0; }
     virtual guint32 getTTL(){ return 2000; }
@@ -87,7 +87,7 @@ protected:
 class WorkSource : public Source, public WorkObject
 {
 public:
-    WorkSource(string const& _name):Source(_name){}
+    WorkSource(string _name):Source(_name){}
     virtual void stop(){}
     virtual void report(json::value *obj,ReportType type)const;
 };
@@ -104,7 +104,7 @@ public:
     /**
      * @brief BufferedSource : default constructor
      */
-    BufferedSource(std::string const& name):Source(name){}
+    BufferedSource(std::string name):Source(name){}
 
     guint8 *_data(){ return data.data(); }
     /**
@@ -172,7 +172,7 @@ public:
     /**
      * @brief TypedSource : default constructor
      */
-    TypedSource(string const& name):Source(name){}
+    TypedSource(string name):Source(name){}
     /**
      * @brief getData
      * @return T* where T=the buffered data type (see HeartRateSource)
@@ -303,7 +303,7 @@ public:
 class GStreamerSourceBase : public WorkSource
 {
 public:
-    GStreamerSourceBase(std::string const& _name):WorkSource(_name){}
+    GStreamerSourceBase(std::string _name):WorkSource(_name){}
     virtual void writeNextSample(GstSample *sample)=0;
 };
 
@@ -311,7 +311,7 @@ class GStreamerSampleSource :
     public GStreamerSourceBase
 {
 public:
-    GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize);
+    GStreamerSampleSource(GStreamer::GStreamer *gst,std::string _name,guint32 maxSampleSize);
     virtual guint32 lengthData();
     virtual guint32 getTTL();
     virtual guint32 getTau();
@@ -334,7 +334,7 @@ class GStreamerOffsetSource :
     public GStreamerSourceBase
 {
 public:
-    GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name);
+    GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string _name);
     virtual guint32 lengthData();
     virtual guint32 getTTL();
     virtual guint32 getTau();

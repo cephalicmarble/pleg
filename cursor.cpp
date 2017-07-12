@@ -182,7 +182,7 @@ void Cursor::backtrace(int n) {
 
 /**
  * @brief Tracer::Tracer
- * @param _filename QString
+ * @param _filename string
  */
 Tracer::Tracer(string _filename) :
     filename(_filename)

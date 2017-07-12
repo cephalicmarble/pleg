@@ -80,7 +80,7 @@ public:
     void remove(const string &str,bool noDelete = false);
 
     /**
-     * @brief removeAll : remove a QString QSSource* mapping, delete the QSSource
+     * @brief removeAll : remove a string Source* mapping, delete the Source
      * @param str
      */
     void removeAll(bool noDelete = false)

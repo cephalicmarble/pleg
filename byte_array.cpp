@@ -12,10 +12,27 @@ byte_array::byte_array()
     m_length = 0;
 }
 
-byte_array::byte_array(const void *mem,size_t length)
+byte_array::byte_array(byte_array &rhs)
+{
+    operator=(rhs);
+}
+
+byte_array::byte_array(byte_array &&rhs)
+{
+    operator=(rhs);
+}
+
+byte_array::byte_array(const void *mem,size_t length,bool takeOwnership)
 {
     m_data = const_cast<void*>(mem);
     m_length = length;
+    m_destroy = takeOwnership;
+}
+
+byte_array::byte_array(const std::string &owner)
+{
+    m_data = const_cast<void*>(static_cast<const void*>(owner.c_str()));
+    m_length = owner.length();
 }
 
 byte_array::~byte_array()
@@ -33,12 +50,28 @@ void byte_array::clear()
     m_length = 0;
 }
 
+byte_array &byte_array::operator=(const byte_array &rhs)
+{
+    m_destroy = rhs.m_destroy;
+    const_cast<byte_array&>(rhs).m_destroy = false;
+    m_data = rhs.m_data;
+    m_length = rhs.m_length;
+    return *this;
+}
+
 byte_array &byte_array::operator=(const char *pc)
 {
     clear();
     m_data = const_cast<void*>(static_cast<const void*>(pc));
-    m_length = 1;
+    m_length = strlen(pc);
     return *this;
+}
+
+byte_array byte_array::fromRawData(char *pc,size_t start,size_t length)
+{
+    byte_array bytes;
+    bytes.append(pc+start,length!=string::npos?length:strlen(pc+start));
+    return bytes;
 }
 
 byte_array byte_array::fromRawData(void *mem,size_t length)
@@ -48,7 +81,7 @@ byte_array byte_array::fromRawData(void *mem,size_t length)
     return bytes;
 }
 
-byte_array byte_array::fromRawData(std::string & str)
+byte_array byte_array::fromRawData(std::string str)
 {
     byte_array bytes;
     bytes.append(str.c_str(),str.length());
@@ -80,8 +113,14 @@ void byte_array::append(std::string & str)
 
 void byte_array::append(const void *m_next,size_t length)
 {
-    char *pdest = (char*)malloc(m_length+length);
-    memmove(pdest,data(),m_length);
+    if(!length)
+        return;
+    char *pdest;
+    if(m_data){
+        pdest = (char*)realloc(m_data,m_length+length);
+    }else{
+        pdest = (char*)malloc(m_length+length);
+    }
     memmove(pdest+m_length,m_next,length);
     if(m_data != nullptr)free(m_data);
     m_data = pdest;
@@ -182,7 +221,7 @@ Buffer::operator byte_array()
 
 ostream& operator<< (ostream &strm, const drumlin::byte_array &bytes)
 {
-    strm << bytes.string();
+    strm.write((char*)bytes.data(),bytes.length());
     return strm;
 }
 

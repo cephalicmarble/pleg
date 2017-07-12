@@ -82,7 +82,7 @@ Pleg::FileWriter *Files::getFileWriter(string const& filename)
 
 Files files;
 
-string virtualFilePath(string filepath,bool isDirectory)
+string virtualFilePath(string filepath)
 {
     Config::JsonConfig config(Config::files_config_file);
     string root(config["/files_root"].get_string().c_str()),absolutePath;
@@ -92,7 +92,7 @@ string virtualFilePath(string filepath,bool isDirectory)
         return "";
     }
     absolutePath = filesystem::absolute(file,filesystem::initial_path()).string();
-    if(0==absolutePath.find_first_of(filesystem::absolute(rootdir,filesystem::initial_path()).string())){
+    if(0==absolutePath.find(filesystem::absolute(rootdir,filesystem::initial_path()).string())){
         return absolutePath;
     }
     return "";
@@ -114,14 +114,12 @@ string treeAt(json::value *tree,string path)
         return "Directory not found: "+path;
     filesystem::directory_iterator iter(p);
     for (directory_entry& file : directory_iterator(p)) {
-        if(file.path().string().substr(0,1)==".")
-            continue;
         std::ofstream stat(file.path().string().c_str());
         if(!stat.is_open())
             continue;
         json::value node(json::empty_object);
         string nodepath(filesystem::absolute(file.path(),filesystem::initial_path()).string());
-        if(file.status().type() | directory_file){
+        if(file.status().type() == directory_file){
             node.get_object().insert({"type","directory"});
             json::value children(json::empty_array);
             string error = treeAt(&children,nodepath);
@@ -131,13 +129,13 @@ string treeAt(json::value *tree,string path)
                 continue;
             }
             node.get_object().insert({"children",children});
-        }else if(file.status().type() | regular_file){
+        }else if(file.status().type() == regular_file){
             node.get_object().insert({"type","file"});
             node.get_object().insert({"size",filesystem::file_size(file.path())});
         }else{
             continue;
         }
-        node.get_object().insert({"path",nodepath});
+        node.get_object().insert({"path",file.path().string()});
         node.get_object().insert({"name",file.path().filename().string()});
         tree->get_array().push_back(node);
     }

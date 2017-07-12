@@ -41,6 +41,8 @@ Thread::~Thread()
 {
     Debug() << __func__ << this;
     deleting = true;
+    if(!ready)
+        return;
     if(getWorker())
         delete getWorker();
 }
@@ -49,12 +51,11 @@ void Thread::terminate()
 {
     Debug() << __func__ << this;
     {
-        lock_guard<mutex> l(critical_section);
         if(terminated)
             return;
         terminated = true;
-        quit();
     }
+    quit();
 }
 
 /**
@@ -90,6 +91,9 @@ bool Thread::event(Event *pevent)
 {
     if(!pevent)
         return false;
+    if(getWorker()->event(pevent)){
+        return true;
+    }
     quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
     if((guint32)pevent->type() < (guint32)Event_first
             || (guint32)pevent->type() > (guint32)Event_last){
@@ -135,9 +139,12 @@ void Thread::run()
         this_thread::sleep_for(chrono::milliseconds(400));
     }
     getWorker()->critical_section.unlock();
+    {
+        ready = true;
+    }
     make_event(Event::Type::ThreadWork,"work")->send(this);
-    ready = true;
-    exec();
+    if(!terminated)
+        exec();
     terminate();
     if(getWorker()){
         worker->shutdown();
@@ -149,22 +156,33 @@ void Thread::run()
 
 void Thread::post(Event *event)
 {
-    m_queue << event;
+    CRITICAL
+    m_queue.push(event);
 }
 
 void Thread::exec()
 {
-    Event *pevent;
     while(!deleting && !terminated && !m_thread.interruption_requested()){
         try{
             this_thread::interruption_point();
-            {
-                this_thread::disable_interruption di;
-                m_queue.wait_pull(pevent);
-                event(pevent);
+            if(!critical_section.try_lock()){
+                this_thread::yield();
+                continue;
             }
+            if(!m_queue.empty()) {
+                queue_type::value_type pevent(m_queue.front());
+                m_queue.pop();
+                critical_section.unlock();
+                if(event(pevent)){
+                    delete pevent;
+                }else{
+                    Critical() << __func__ << "leaking event" << *pevent;
+                }
+            }else{
+                critical_section.unlock();
+            }
+            this_thread::yield();
         }catch(thread_interrupted &ti){
-            terminate();
         }
     }
 }
@@ -211,7 +229,8 @@ ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),thread(_thread
  */
 ThreadWorker::~ThreadWorker()
 {
-    thread->worker = nullptr;        
+    if(thread)
+        thread->worker = nullptr;
 }
 
 /**
@@ -243,6 +262,11 @@ void ThreadWorker::report(json::value *obj,ReportType type)const
             map.at("jobs").get_object().insert({job.first,job_obj});
         }
     }
+}
+
+void ThreadWorker::postWork(Object *sender)
+{
+    make_event(Event::Type::ThreadWork,__func__,sender)->send(getThread());
 }
 
 /* STREAM OPERATORS */

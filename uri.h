@@ -11,11 +11,11 @@ namespace Pleg {
 
 class Relevance;
 /**
- * @brief The QSUriParseFunc struct
+ * @brief The UriParseFunc struct
  *
  * Reads arguments from the URI definition string.
  * Matches them to URL path items.
- * Creates QSRelevance from the arguments_type map.
+ * Creates Relevance from the arguments_type map.
  */
 struct UriParseFunc {
     string pattern;

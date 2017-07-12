@@ -21,7 +21,10 @@ SocketAdapter<asio::ip::tcp>::SocketAdapter(Socket<asio::ip::tcp> *socket):m_soc
 template<>
 void SocketAdapter<asio::ip::tcp>::error(boost::system::error_code ec)
 {
-    m_socket->m_connection->error(ec);
+    if(m_socket->m_connection)
+        m_socket->m_connection->error(ec);
+    else if(m_socket->handler)
+        m_socket->handler->error(m_socket,ec);
 }
 
 template <>

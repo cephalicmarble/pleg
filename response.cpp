@@ -118,6 +118,12 @@ void Get::_get()
     Debug() << "get::service - " << *rel;
     data.clear();
     auto buffers(Pleg::Cache(CPS_call(this,Buffers::findRelevant,rel)));
+    if(!distance(data.begin(),data.end())){
+        stringstream ss;
+        ss << "No relevant data";
+        getRequest()->getSocketRef().write(ss.str());
+        return;
+    }
     string header(getRequest()->getHeader("Content-Type"));
     if(algorithm::find_tail(header,4)=="json"){
         headers << "Content-Type: text/json";
@@ -272,9 +278,9 @@ void Get::_file()
     string filepath;
     if(rel.params.end()==rel.params.find("r")){
         filepath = root+filesystem::path::preferred_separator+rel.arguments.at("name");
-    }else if(Files::virtualFilePath(rel.params.at("r")).length(),true){
+    }else if(Files::virtualFilePath(rel.params.at("r")).length()){
         filepath = rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
-    }else if(Files::virtualFilePath(filesystem::path::preferred_separator+rel.params.at("r")).length(),true){
+    }else if(Files::virtualFilePath(filesystem::path::preferred_separator+rel.params.at("r")).length()){
         filepath = root+filesystem::path::preferred_separator+rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
     }
     filesystem::path path(Files::virtualFilePath(filepath));
@@ -305,7 +311,7 @@ void Get::_file()
         statusCode = "206 Partial Content";
         string::size_type sz(string::npos);
         string rangeHeader;
-        if(string::npos != (sz = getRequest()->headers["Range"].find_first_of("bytes="))){
+        if(string::npos != (sz = getRequest()->headers["Range"].find("bytes="))){
             rangeHeader = getRequest()->headers["Range"].replace(sz,6,"");
         }else{
             rangeHeader = getRequest()->headers["Range"];
@@ -336,7 +342,7 @@ void Get::_lsof()
     Config::JsonConfig config(Config::files_config_file);
     string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r"):string("")),true));
+    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r"):string(""))));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
         Log() << "Attempted to access illegal path.";
@@ -358,8 +364,7 @@ void Get::_lsof()
         fileWriter->getStatus(&file);
         obj.insert({fileWriter->getFilePath(),file});
     }
-    string s(json::to_string(object));
-    getRequest()->getSocketRef().write(byte_array(s.c_str(),s.length()));
+    getRequest()->getSocketRef().write(byte_array(json::to_string(object)));
 }
 
 /**
@@ -416,7 +421,7 @@ void Post::_mkdir()
     Config::JsonConfig config(Config::files_config_file);
     string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string("")),true));
+    string rpath(Files::virtualFilePath(filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string(""))));
     if(!rpath.length()){
         statusCode = "403 Forbidden";
         Log() << "Outside files_root!";
@@ -493,7 +498,7 @@ void Post::teeSourcePort()
         if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::GStreamer::jobs_type::value_type const& job){
             return job.first == (rel.arguments.at("source")+".tee");
         })) return;
-        Log() << "opening udp tee at" << rel.arguments.at("ip") << rel.arguments.at("port");
+        Log() << "opening udp tee at" << rel.arguments.at("@ip") << rel.arguments.at("@port");
         make_pod_event(Event::Type::GstStreamPort,"openSourcePort",getRequest())->send(thread);
         break;
     }

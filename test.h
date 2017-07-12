@@ -1,17 +1,20 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include <tao_forward.h>
+using namespace tao;
 #include <list>
 #include <map>
 #include <memory>
+#include <regex>
 using namespace std;
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
-#include <boost/regex.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 using namespace boost;
 #include "object.h"
+#include "event.h"
 #include "cursor.h"
 #include "thread.h"
 #include "socket.h"
@@ -44,9 +47,8 @@ class SocketTestHandler :
 public:
     typedef drumlin::Socket<Protocol> Socket;
 protected:
-    vector<string> headers;
-    string::size_type contentLength = -1;
-    string content = "";
+    byte_array::size_type contentLength = 0;
+    byte_array content;
 };
 
 /**
@@ -58,16 +60,11 @@ class Test :
     public SocketTestHandler<Protocol>,
     public AsioClient<Protocol>
 {
-    TestType type;
-    string host;
-    string port;
-    string url;
-    vector<string> headers;
+public:
     typedef Protocol protocol_type;
     typedef SocketTestHandler<Protocol> SockHandler;
     typedef drumlin::Socket<Protocol> Socket;
     typedef AsioClient<Protocol> Client;
-public:
     /**
      * @brief Test::Test
      * @param parent Object
@@ -75,14 +72,15 @@ public:
      * @param _port number
      * @param _type TestType
      */
-    Test(Thread *_thread,
-           string _host,
+    Test(string _host,
            string _port,
            TestType _type)
-        : ThreadWorker(ThreadType_test,_thread),SockHandler(),Client(drumlin::io_service,_host,lexical_cast<int>(_port))
-        ,type(_type),host(_host),port(_port)
+        : ThreadWorker(ThreadType_test,(Object*)0),SockHandler(),Client(drumlin::io_service,_host,lexical_cast<int>(_port))
+        ,type(_type),host(_host),port(_port),m_socket(drumlin::io_service,(Object*)0,this,Client::getAsioSocket())
     {
         tracepoint;
+        lock_guard<recursive_mutex> l(critical_section);
+        thread = new Thread(metaEnum<TestType>().toString(_type),this);
     }
     /**
      * @brief Test::~Test
@@ -96,22 +94,31 @@ public:
      * @param _url tring
      * @return Test*
      */
-    Test<Protocol> *setRelativeUrl(string _url)
+    Test<Protocol> &setRelativeUrl(string _url)
     {
         tracepoint
         url = _url;
-        return this;
+        string task;
+        switch(type){
+        case test_GET:task = "GET";break;
+        case test_POST:task = "POST";break;
+        case test_PATCH:task = "PATCH";break;
+        case test_UDP:task = "UDP";break;
+        }
+        task += " " + url;
+        getThread()->setTask(task);
+        return *this;
     }
     /**
      * @brief Test::setHeaders : convenience function
      * @param _headers tring
      * @return Test*
      */
-    Test<Protocol> *setHeaders(const string_list &_headers)
+    Test<Protocol> &setHeaders(const string_list &_headers)
     {
         tracepoint
         headers = _headers;
-        return this;
+        return *this;
     }
 
     /**
@@ -150,13 +157,16 @@ public:
     /**
      * @brief Test::run defines the test HTTP phrases, UDP preamble
      */
-    void run(Object *obj,Event *)
+    void work(Object *,Event *)
     {
+        if(!url.length())
+            return;
         tracepoint
-                Socket socket(drumlin::io_service,obj,this);
-        socket.setTag((void*)getThread());
-        socket.connectToHost(host,port);
-        Debug() << &socket << " opened";
+        m_socket
+            .setTag((void*)getThread())
+            .setHandler(this);
+
+        Debug() << &m_socket << " opened" << this_thread::get_id();
         string_list protocol;
         switch(type){
         case test_UDP:
@@ -172,12 +182,16 @@ public:
             protocol << "GET" << url << "HTTP/1.1";
             break;
         }
-        socket.write(algorithm::join(protocol," ") + "\r\n" + algorithm::join(headers,"\r\n") + "\r\n\r\n");
-        Debug() << &socket << " writing";
-        socket.writing();
-        Debug() << &socket << " spinning";
-        socket.reading();
+        m_socket.write(algorithm::join(protocol," ") + "\r\n" + headers.join("\r\n") + "\r\n\r\n");
+        Debug() << &m_socket << " writing";
+        m_socket.synchronousReads(true);
+        m_socket.synchronousWrites(true);
+        m_socket.writing();
+        Debug() << &m_socket << " spinning";
+        m_socket.reading();
+        signalTermination();
     }
+
     /**
      * @brief Test<>::processTransmission handles HTTP
      * @param socket Socket*
@@ -186,8 +200,9 @@ public:
     bool processTransmission(Socket *socket)
     {
         tracepoint
-        SockHandler::content += string(socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush));
-        return 0 <= SockHandler::contentLength && SockHandler::content.length() >= SockHandler::contentLength;
+        byte_array bytes(socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush));
+        SockHandler::content.append(bytes.data(),bytes.length());
+        return 0 < SockHandler::contentLength && SockHandler::content.length() >= SockHandler::contentLength;
     }
 
     /**
@@ -198,8 +213,7 @@ public:
     bool receivePacket(Socket *socket)
     {
         tracepoint
-        byte_array bytes(socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush));
-        Debug() << bytes.length();
+        Debug() << socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush).length();
         return true;
     }
     /**
@@ -211,24 +225,29 @@ public:
     {
         tracepoint
         Debug() << __func__;
+        std::regex rx("^HTTP/1.1 [^\r\n]+\r\n([^\r\n]+\r\n)+\r\n(.*)");
+        std::cmatch cap;
         byte_array bytes(socket->peekData(Socket::FlushBehaviours::Coalesce));
-        boost::regex rx("^HTTP/1.1 [^\r\n]+\r\n([^\r\n]+\r\n)+\r\n(.*)");
-        boost::smatch cap;
-        string http(bytes.string());
-        if(!boost::regex_match(http,cap,rx)){
+        cout << bytes.cdata();
+        if(!std::regex_match(bytes.cdata(),cap,rx)){
             return false;
         }
-        socket->peekData(Socket::FlushBehaviours::Flush);
-        SockHandler::content = string(cap[2]);
         headers.clear();
-        headers = string_list::fromString(SockHandler::content,"\r\n",true);
+        headers = string_list::fromString(cap[1],"\r\n",true);
+        SockHandler::content = byte_array::fromRawData(bytes.cdata(),cap.length(0)-cap.length(2),string::npos);
         for(string const& header : headers){
             string_list nv(string_list::fromString(header,":"));
             if(nv[0] == "Content-Length"){
                 SockHandler::contentLength = std::atoi(nv[1].c_str());
             }
         }
-        return 0<=SockHandler::contentLength;
+        if(0 < SockHandler::contentLength && SockHandler::content.length() >= SockHandler::contentLength) {
+            SockHandler::content.truncate(SockHandler::contentLength);
+            socket->peekData(Socket::FlushBehaviours::Flush);
+            return true;
+        }else{
+            return false;
+        }
     }
     /**
      * @brief Test<>::reply should write a reply to any communication
@@ -248,9 +267,26 @@ public:
      */
     void completing(Socket *socket)
     {
-        if(socket->writeQueueLength())
+        if(socket->writeQueueLength() || socket->socket().available())
             return;
-        socket->socket().close();
+        tracepoint
+        if(!SockHandler::content.length() &&
+           (!readyProcess(socket) || !processTransmission(socket))){
+            Debug() << "early disconnection";
+            Debug() << ((Thread*)socket->getTag()) << "quits";
+            ((Thread*)socket->getTag())->quit();
+            return;
+        }
+        Debug() << this_thread::get_id() << __func__;
+        std::cout << SockHandler::content.string() << endl;
+        std::cout << SockHandler::contentLength << endl;
+        try{
+            json::to_stream(std::cout,json::from_string(string(SockHandler::content.cdata(),0,SockHandler::content.length())));
+        }catch(std::exception &e){
+            Critical() << e.what();
+        }
+        Debug() << ((Thread*)socket->getTag()) << "quits";
+        ((Thread*)socket->getTag())->quit();
     }
 
     /**
@@ -267,22 +303,22 @@ public:
      * @brief Test<>::disconnected interrupt the test thread
      * @param socket Socket*
      */
-    void disconnected(Socket *socket)
+    void disconnected(Socket *)
     {
-        tracepoint
-        if(!SockHandler::content.length() &&
-           (!readyProcess(socket) || !processTransmission(socket))){
-            Debug() << "early disconnection";
-            Debug() << ((Thread*)socket->getTag()) << "quits";
-            ((Thread*)socket->getTag())->quit();
-            return;
-        }
-        Debug() << this_thread::get_id() << __func__;
-        algorithm::trim(SockHandler::content);
-        json::to_stream(std::cout,json::from_string(SockHandler::content));
-        Debug() << ((Thread*)socket->getTag()) << "quits";
+    }
+    void error(Socket *socket,boost::system::error_code &ec)
+    {
+        Critical() << ec.message();
         ((Thread*)socket->getTag())->quit();
     }
+
+private:
+    TestType type;
+    string host;
+    string port;
+    string url;
+    string_list headers;
+    Socket m_socket;
 };
 
 /**

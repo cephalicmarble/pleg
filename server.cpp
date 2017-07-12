@@ -53,7 +53,7 @@ void Server::defineRoutes()
     post(Uri::parser("mkdir/{file?}?r-")             ,&Post::_mkdir);
     post(Uri::parser("write/{source?}/{file?}?r-")   ,&Post::makeWriterFile);
     post(Uri::parser("stop/{source?}/{file?}?r-")    ,&Post::stopWriterFile);
-    post(Uri::parser("tee/{source?}/{ip?}/{port?}")  ,&Post::teeSourcePort);
+    post(Uri::parser("tee/{source?}/{@ip?}/{@port?}")  ,&Post::teeSourcePort);
 
     patch(Uri::parser("routes")                      ,&Patch::_routes);
     patch(Uri::parser("routes/{detail?}")            ,&Patch::_routes);
@@ -100,7 +100,7 @@ std::vector<Route<Catch>> const& Server::getRoutes<Catch>()const{ return catch_r
 void Server::start()
 {
     Log() << "Started Server";
-    lock_guard<boost::mutex> l(app->thread_critical_section);
+    lock_guard<boost::mutex> l(app->critical_section);
     defineRoutes();
     ServerBase::start();
 }
@@ -136,7 +136,7 @@ void Server::writeLog()
 void Server::getStatus(json::value *status)const
 {
     ApplicationBase::getStatus(status);
-    lock_guard<boost::mutex> l(thread_critical_section); //Server inherits Application<T>
+    lock_guard<boost::mutex> l(critical_section); //Server inherits Application<T>
 
     json::value requests(json::empty_array);
     json::array_t &threads(status->get_object().at("threads").get_array());

@@ -89,6 +89,7 @@ public:
     virtual bool receivePacket(Socket *){return false;}
     virtual void sort(Socket *,drumlin::buffers_type &){}
     virtual void disconnected(Socket *){}
+    virtual void error(Socket *socket,boost::system::error_code &ec);
 
     virtual void writeToStream(std::ostream &stream)const;
     virtual void getStatus(json::value *status)const;

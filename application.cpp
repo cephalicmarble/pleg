@@ -15,7 +15,7 @@ using namespace boost;
 namespace drumlin {
 
 template<class T>
-mutex Application<T>::thread_critical_section;
+mutex Application<T>::critical_section;
 
 int null_argc = 0;
 template <class T>
@@ -34,7 +34,7 @@ Application<T>::~Application()
 {
 }
 
-#define THREADSLOCK lock_guard<mutex> l(thread_critical_section);
+#define THREADSLOCK lock_guard<mutex> l(critical_section);
 
 /**
  * @brief Application<T>::addThread : optionally start a thread as it is added
@@ -148,9 +148,9 @@ void Application<T>::getStatus(json::value *status)const
     for(threads_reg_type::value_type const& thread : *threads){
         json::value obj(json::empty_object);
         Thread *_thread(thread.second->getThread());
+        lock_guard<mutex> l(_thread->critical_section);
         if(!_thread->isStarted() || _thread->isTerminated())
             continue;
-        lock_guard<mutex> l(_thread->critical_section);
         thread.second->writeToObject(&obj);//report the thread
         array.get_array().push_back(obj);
         thread.second->getStatus(status);//report sub-system
@@ -179,8 +179,11 @@ int Application<T>::exec()
             {
                 this_thread::disable_interruption di;
                 m_queue.wait_pull(pevent);
-                if(event(pevent))
+                if(event(pevent)){
                     delete pevent;
+                }else{
+                    Critical() << __func__ << "leaking event" << *pevent;
+                }
             }
         }
     }catch(thread_interrupted &ti){

@@ -133,6 +133,11 @@ int main(int argc, char *argv[])
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
 
+        if (vm.count("help")) {
+            cout << desc << endl;
+            return 1;
+        }
+
         if(vm.count("trace")){
             drumlin::Tracer::startTrace(trace);
         }
@@ -166,7 +171,7 @@ int main(int argc, char *argv[])
         server.start();
 
         try{
-            drumlin::io_service.run();
+            drumlin::start_io();
             retval = a.exec();
         }catch(Exception &e){
             Debug() << e.message;
@@ -187,8 +192,6 @@ int main(int argc, char *argv[])
         app = &a;
         drumlin::iapp = app;
 
-        drumlin::io_service.run();
-
         string get = "/mock",post,patch = "/status",host,port,bluetooth = "scan",trace = "trace.json";
         string_list headers;
         int repeats;
@@ -201,7 +204,7 @@ int main(int argc, char *argv[])
             ("patch,s"             ,po::value<string>(&patch)                                                           ,"PATCH test [/status].")
             ("udp,u"                                                                                                    ,"Run the UDP test.")
             ("debug,d"                                                                                                  ,"Prompt to continue")
-            ("host,h"              ,po::value<string>(&host)->default_value("localhost")                                ,"Host name of the server [localhost].")
+            ("host,h"              ,po::value<string>(&host)->default_value("127.0.0.1")                                ,"Host name of the server [localhost].")
             ("port,P"              ,po::value<string>(&port)->default_value("4999")                                     ,"Port on the server.")
             ("json,j"                                                                                                   ,"Content-Type: text/json")
             ("headers,H"           ,po::value<vector<string>>(&headers)                                                 ,"headers for request.")
@@ -216,6 +219,11 @@ int main(int argc, char *argv[])
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
+
+        if (vm.count("help")) {
+            cout << desc << endl;
+            return 1;
+        }
 
         if(vm.count("debug")){
             scanf("Ready?");
@@ -232,35 +240,29 @@ int main(int argc, char *argv[])
             drumlin::Tracer::startTrace(trace);
         }
 
+        drumlin::start_io();
+
         if(vm.count("get")){
             for(i=0;i<repeats;i++){
-                Thread *thread = new Thread("GET");
-                Test<> *test(new Test<>(thread,host,port,test_GET));
-                test->setRelativeUrl(get)->setHeaders(headers)->getThread();
-                app->addThread(thread);
+                Test<> *test(new Test<>(host,port,test_GET));
+                app->addThread(test->setRelativeUrl(get).setHeaders(headers).getThread());
             }
         }
         if(vm.count("post")){
             for(i=0;i<repeats;i++){
-                Thread *thread = new Thread("POST");
-                Test<> *test(new Test<>(thread,host,port,test_POST));
-                test->setRelativeUrl(post)->setHeaders(headers)->getThread();
-                app->addThread(thread);
+                Test<> *test(new Test<>(host,port,test_POST));
+                app->addThread(test->setRelativeUrl(post).setHeaders(headers).getThread());
             }
         }
         if(vm.count("patch")){
             headers << "X-Method: PATCH";
             for(i=0;i<repeats;i++){
-                Thread *thread = new Thread("PATCH");
-                Test<> *test(new Test<>(thread,host,port,test_PATCH));
-                test->setRelativeUrl(patch)->setHeaders(headers)->getThread();
-                app->addThread(thread);
+                Test<> *test(new Test<>(host,port,test_PATCH));
+                app->addThread(test->setRelativeUrl(patch).setHeaders(headers).getThread());
             }
         }
         if(vm.count("udp")){
-            Thread *thread = new Thread("UDP");
-            new Test<asio::ip::udp>(thread,host,port,test_UDP);
-            app->addThread(thread);
+            app->addThread((new Test<asio::ip::udp>(host,port,test_UDP))->getThread());
         }
 //        if(vm.count("uri")){
 //            bluet = app->startBluetooth("mock",config);

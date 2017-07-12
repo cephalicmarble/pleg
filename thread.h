@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <string>
+#include <queue>
+using namespace std;
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/sync_queue.hpp>
@@ -42,23 +44,26 @@ class StatusReporter {
 
 class ThreadWorker;
 
+#define CRITICAL lock_guard<mutex> l(critical_section);
+
 /**
- * @brief The QSThread class
+ * @brief The Thread class
  */
 class Thread
 {
 public:
+    typedef queue<Event*> queue_type;
     bool isTerminated(){ return terminated; }
     void terminate();
     static mutex critical_section;
     Thread(string _task);
     Thread(string _task,ThreadWorker *_worker);
-    boost::thread const& getBoostThread()const{ return m_thread; }
+    boost::thread const& getBoostThread()const{ CRITICAL return m_thread; }
     /**
      * @brief getWorker
      * @return ThreadWorker*
      */
-    ThreadWorker *getWorker()const{ return worker; }
+    ThreadWorker *getWorker()const{ CRITICAL return worker; }
     /**
      * @brief isStarted
      * @return bool
@@ -69,7 +74,7 @@ public:
      * @brief getTask
      * @return string
      */
-    string getTask()const{ return task; }
+    string getTask()const{ CRITICAL return task; }
     /**
      * @brief setTask
      * @param _task string
@@ -78,10 +83,11 @@ public:
     Thread *setTask(string _task){ task = _task; return this; }
     virtual ~Thread();
     double elapsed();
-
+protected:
     virtual void run();
     virtual void exec();
     virtual bool event(Event *);
+public:
     virtual void quit();
     void post(Event *);
     operator const char*()const;
@@ -95,7 +101,7 @@ public:
     }
 private:
     boost::thread m_thread;
-    boost::concurrent::sync_queue<Event*> m_queue;
+    queue_type m_queue;
     string task;
     ThreadWorker *worker;
     bool ready = false;
@@ -109,7 +115,7 @@ private:
 };
 
 /**
- * @brief The QSThreadWorker class
+ * @brief The ThreadWorker class
  */
 class ThreadWorker :
     public Object,
@@ -155,9 +161,11 @@ public:
     virtual void shutdown()=0;
     virtual void report(json::value *obj,ReportType type)const;
     virtual void work(Object *,Event *){}
+    virtual bool event(Event *){return false;}
+    void postWork(Object *sender);
     friend class Server;
 protected:
-    Thread *thread;
+    Thread *thread = nullptr;
     Type type;
 };
 

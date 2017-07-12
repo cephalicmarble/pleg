@@ -55,13 +55,13 @@ string_list string_list::fromString(string const& toSplit,string delim,bool all,
     }else{
         string::size_type pos(string::npos);
         string s(toSplit);
-        while((pos=s.find_first_of(delim))!=string::npos)s.replace(pos,delim.length(),"¬");
+        while((pos=s.find(delim))!=string::npos)s.replace(pos,delim.length(),"¬");
         algorithm::split(list,s,algorithm::is_any_of("¬"),flags);
     }
     return list;
 }
 
-string_list &string_list::operator=(string_list &rhs)
+string_list &string_list::operator=(string_list const& rhs)
 {
     std::copy(rhs.begin(),rhs.end(),back_inserter(*this));
     return *this;

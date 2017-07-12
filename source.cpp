@@ -35,7 +35,7 @@ void Source::writeNext()
         delete buf;
         return;
     }
-    writeNext(const_cast<void*>(buf->data<void>()),buf->length());
+    writeNextHere(const_cast<void*>(buf->data<void>()),buf->length());
     buf->getRelevance()->setSource(this);
     buf->TTL(getTTL());
     Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
@@ -51,6 +51,8 @@ void WorkSource::report(json::value *obj,ReportType type)const
     obj->get_object().insert({"ticks",tick});
     if(type & WorkObject::ReportType::Memory){
         const Buffers::heap_t *heap(Allocator(CPS_call_void(Buffers::getHeap,dynamic_cast<const Pleg::Sources::Source*>(this))));
+        if(!heap)
+            return;
         obj->get_object().insert({"allocated",heap->allocated * heap->size});
         obj->get_object().insert({"reserved",heap->max});
     }
@@ -100,7 +102,7 @@ void MockSource::writeNext(void *buf,guint32)
     (*(guint64*)buf) = round(100.0*(1.0*rand()/RAND_MAX));
 }
 
-GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::string const& _name,guint32 maxSampleSize)
+GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::string _name,guint32 maxSampleSize)
     :GStreamerSourceBase(_name),src(gst,_name),m_maxSampleSize(maxSampleSize)
 {
     type = Source_Gstreamer;
@@ -192,7 +194,7 @@ void GStreamerSampleSource::writeToFile(Request *req,string rpath)
         make_event(Event::Type::GstStreamFile,"open")->send(req->getThread());
 }
 
-GStreamerOffsetSource::GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string const& _name)
+GStreamerOffsetSource::GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string _name)
     :GStreamerSourceBase(_name),src(gst,_name)
 {
     type = Source_Offset;

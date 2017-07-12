@@ -12,8 +12,8 @@ namespace Pleg {
 
 namespace Buffers {
 
-//#define DEBUGHEAP 1
-//#define DEBUGCACHE 1
+#define DEBUGHEAP 1
+#define DEBUGCACHE 1
 
 /**
  * @brief Buffer::Buffer : only constructor, sets timestamp
@@ -334,7 +334,9 @@ int Allocator::unregisterSources(int)
  */
 const heap_t *Allocator::getHeap(const Sources::Source *source)
 {
-    return heaps.at(const_cast<Sources::Source*>(source));
+    if(heaps.end() != heaps.find(const_cast<Sources::Source*>(source)))
+        return heaps.at(const_cast<Sources::Source*>(source));
+    return nullptr;
 }
 
 /**
@@ -416,7 +418,7 @@ bool BufferCache::isLocked()
 guint32 BufferCache::addBuffer(const Buffer *buffer)
 {
 #ifdef DEBUGCACHE
-    Debug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << buffer->getTimestampRef().toString() << buffer->operator string();
+    Debug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << posix_time::to_iso_string(buffer->getTimestampRef()) << buffer->operator string();
 #endif
     Buffer *buf(const_cast<Buffer*>(buffer));
     buffers.push_front(buffers_type::value_type(buf));
@@ -507,7 +509,7 @@ buffer_vec_type BufferCache::findRelevant(const Relevance *rel)
     for(buffers_type::value_type &buffer : buffers)
     {
 #ifdef DEBUGCACHE
-    Debug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << buffer->getTimestampRef().toString() << buffer->operator string();
+    Debug() << "Cache" << buffer->getRelevanceRef().getSourceName().c_str() << posix_time::to_iso_string(buffer->getTimestampRef()) << buffer->operator string();
 #endif
         if(buffer->getRelevanceRef() == *rel){
             Debug() << buffer.get() << " found relevant";

@@ -27,7 +27,7 @@ namespace Pleg {
  * @param parent Server*
  */
 Request::Request(Pleg::Server *_server)
-    : ThreadWorker(ThreadType_http,(Object*)_server),SocketHandler(),connection_type()
+    : ThreadWorker(ThreadType_http,(Object*)_server),SocketHandler(),connection_type(this)
 {
     server = _server;
 }
@@ -70,7 +70,6 @@ void Request::error(boost::system::error_code ec)
 
 void Request::close()
 {
-    socket().socket().close();
     signalTermination();
 }
 
@@ -84,26 +83,16 @@ bool Request::readyProcess(Socket*)
 }
 
 /**
- * @brief Request::completingImpl : write a debug string
- * @param bytes quint32 number of bytes written
- */
-void Request::completing(Socket *socket)
-{
-    if(socket->writeQueueLength())
-        return;
-    close();
-}
-
-/**
  * @brief Request::processTransmissionImpl : do HTTP protocol parse
  * @return
  */
 bool Request::processTransmission(Socket *socket)
 {
     vector<string> lines;
-    string str(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush));
+    byte_array bytes(socket->peekData(SocketFlushBehaviours::CoalesceAndFlush));
+    string str(bytes.string());
     string::size_type pos(string::npos);
-    while((pos=str.find_first_of("\r\n"))!=string::npos)str.replace(pos,2,"¬");
+    while((pos=str.find("\r\n"))!=string::npos)str.replace(pos,2,"¬");
     algorithm::split(lines,str,algorithm::is_any_of("¬"),algorithm::token_compress_on);
     for(string &line : lines){
         if(verb == verbs_type::NONE) {
@@ -111,13 +100,11 @@ bool Request::processTransmission(Socket *socket)
             algorithm::split(parts,line,algorithm::is_any_of(" "),algorithm::token_compress_on);
             if(distance(parts.begin(),parts.end())<3){
                 Critical() << "Bad HTTP";
-                socket->socket().close();
                 return false;
             }
             algorithm::trim(parts[2]);
             if(parts[2].compare("HTTP/1.1") && parts[2].compare("HTTP/1.0")){
                 Critical() << "Outmoded HTTP";
-                socket->socket().close();
                 return false;
             }
             string verbp(parts[0]);
@@ -125,7 +112,6 @@ bool Request::processTransmission(Socket *socket)
             verb = (verbs_type)metaEnum<verbs_type>().toEnum(verbp,&ok);
             if(!ok){
                 Critical() << "Bad HTTP verb";
-                socket->socket().close();
                 return false;
             }
             algorithm::trim(parts[1]);
@@ -200,6 +186,23 @@ bool Request::reply(Socket *) {
 }
 
 /**
+ * @brief Request::completingImpl : write a debug string
+ * @param bytes quint32 number of bytes written
+ */
+void Request::completing(Socket *socket)
+{
+    if(socket->writeQueueLength())
+        return;
+    close();
+}
+
+void Request::error(Socket *,boost::system::error_code &ec)
+{
+    Critical() << ec.message();
+    close();
+}
+
+/**
  * @brief Request::end : end the request
  */
 void Request::end()
@@ -212,7 +215,7 @@ void Request::end()
     std::stringstream ss;
     ss << "HTTP/1.1 " << response->getStatusCode() << "\r\n";
     ss << headers << "\r\n";
-    if(string::npos == headers.find_first_of("Content-Length")){
+    if(string::npos == headers.find("Content-Length")){
         ss << "Content-Length: " << socket().bytesToWrite() << "\r\n";
     }
     ss << "\r\n";

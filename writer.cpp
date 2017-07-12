@@ -7,6 +7,7 @@ using namespace tao;
 using namespace std;
 #include <boost/uuid/uuid.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/asio.hpp>
 using namespace boost;
 #include "writer.h"
 #include "buffer.h"
@@ -37,8 +38,7 @@ void Writer::writeJson(const Buffers::buffer_vec_type buffers)
             vec.push_back(value);
             array.get_array().push_back(*value);
         }
-        string str(json::to_string(array));
-        write(byte_array::fromRawData(str));
+        write(byte_array(json::to_string(array)));
     }
     for(auto value : vec){
         delete value;
@@ -54,7 +54,7 @@ void Writer::writeJson(const Buffers::Buffer *buffer)
 {
     json::value *object(getJsonObject(buffer));
     string str(json::to_string(*object));
-    write(byte_array::fromRawData(str));
+    write(byte_array(str));
     delete object;
 }
 
@@ -170,6 +170,7 @@ void FileWriter::accept(const Buffers::Buffer *buffer)
 
 void FileWriter::flush(const Buffers::Buffer *)
 {
+    device.flush();
 }
 
 void FileWriter::write(const Buffers::Buffer *buffer)
@@ -178,14 +179,13 @@ void FileWriter::write(const Buffers::Buffer *buffer)
     format.recordBuffer(buffer);
     json::value *object(getJsonObject(buffer));
     string s(json::to_string(*object));
-    write(byte_array(s.c_str(),s.length()));
+    device << s.c_str();
     delete object;
 }
 
 void FileWriter::write(byte_array const& bytes)
 {
     device << bytes;
-    device.flush();
 }
 
 void FileWriter::getStatus(json::value *status)

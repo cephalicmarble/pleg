@@ -85,6 +85,7 @@ public:
     virtual void completing(Socket *socket)=0;
     virtual void sort(Socket *socket,drumlin::buffers_type &buffers)=0;
     virtual void disconnected(Socket *socket)=0;
+    virtual void error(Socket *socket,boost::system::error_code &ec)=0;
 };
 
 struct ISocketTask
@@ -130,7 +131,16 @@ public:
     typedef Socket<Protocol> Self;
     typedef SocketAdapter<Protocol> adapter_type;
     typedef boost::array<char, 1024> recv_buf_type;
-    Socket(boost::asio::io_service &io_service,Object *parent = 0,Handler *_handler = 0):Object(parent),handler(_handler),m_io_service(io_service),m_sock_type(io_service)
+//    Socket(boost::asio::io_service &io_service,Object *parent = 0,Handler *_handler = 0)
+//        :Object(parent),handler(_handler),m_io_service(io_service),m_sock_type(new socket_type(io_service))
+//    {
+//        READLOCK
+//        WRITELOCK
+//        readBuffers.clear();
+//        writeBuffers.clear();
+//    }
+    Socket(asio::io_service &io_service, Object *parent, Handler *_handler,socket_type *socket)
+        :Object(parent),handler(_handler),m_io_service(io_service),m_sock_type(socket)
     {
         READLOCK
         WRITELOCK
@@ -157,20 +167,6 @@ public:
      */
     void *getTag(){ return tag; }
     Connection<Protocol> *getConnection(){ return m_connection; }
-    bool connectToHost(string host,string port)
-    {
-        typedef Protocol protocol_type;
-        typedef typename protocol_type::resolver resolver_type;
-        resolver_type resolver(m_io_service);
-        typename protocol_type::resolver::query query(host,port);
-        typename resolver_type::iterator iter = resolver.resolve(query);
-        typename resolver_type::iterator end;
-        while(iter != end){
-            typename protocol_type::endpoint endpoint = *iter++;
-            std::cout << endpoint << std::endl;
-        }
-        return true;
-    }
     typedef SocketFlushBehaviours FlushBehaviours;
     gint64 bytesToWrite()const{ return numBytes; }
 
@@ -182,14 +178,6 @@ protected:
     void setClosing(bool c)
     {
         closing = c;
-    }
-    /**
-     * @brief Socket::addBytes : helper to monitor the write queue length, by incrementation
-     * @param num
-     */
-    void addBytes(gint64 num)
-    {
-        numBytes += num;
     }
 public:
     /**
@@ -203,21 +191,31 @@ public:
 
     void reading()
     {
-        socket().async_receive(asio::buffer(m_recv_buf.data(),m_recv_buf.max_size()),
+        size_t sz;
+        if(synchronousRead){
+            try{
+                sz = socket().receive(asio::buffer(m_recv_buf.data(),m_recv_buf.max_size()));
+                bytesRead(boost::system::error_code(),sz);
+            }catch(boost::system::system_error error){
+                bytesRead(error.code(),sz);
+            }
+        }else{
+            socket().async_receive(asio::buffer(m_recv_buf.data(),m_recv_buf.max_size()),
                                boost::bind(&Self::bytesRead,this,boost::asio::placeholders::error,boost::asio::placeholders::bytes_transferred));
+        }
     }
 
     void bytesRead(boost::system::error_code ec,size_t sz)
     {
         READLOCK;
-        readBuffers.push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(m_recv_buf.data(),sz)));
         if(ec){
             adapter_type(this).error(ec);
             return;
         }
+        readBuffers.push_back(drumlin::buffers_type::value_type(new drumlin::Buffer(m_recv_buf.data(),sz)));
         m_bytes_transferred += sz;
         process();
-        if(socket().available()){
+        if(!finished){
             reading();
         }
     }
@@ -240,6 +238,8 @@ public:
             Debug() << this << "::reply";
             replying = false;
             setFinished(handler->reply(this));
+            if(finished)
+                handler->completing(this);
         }
     }
 
@@ -251,33 +251,61 @@ public:
     byte_array peekData(guint8 flushBehaviours)
     {
         READLOCK;
-        byte_array allRead;
+        char *freud(nullptr);
         if(handler && flushBehaviours & SocketFlushBehaviours::Sort){
             handler->sort(this,readBuffers);
         }
+        if(freud){
+            free(freud);
+        }
+        size_t length(0);
         if(flushBehaviours & SocketFlushBehaviours::Coalesce){
-            for_each(readBuffers.begin(),readBuffers.end(),[&allRead](drumlin::buffers_type::value_type &buf){
-                allRead.append(buf->data<void>(),buf->length());
-            });
-            if(flushBehaviours & SocketFlushBehaviours::Flush){
-                readBuffers.clear();
+            for(auto &buf : readBuffers){
+                length += buf->length();
+            }
+            if(length){
+                freud = (char*)malloc(length+1);
+                if(!freud){
+                    Critical() << __func__ << "ENOMEM";
+                    return byte_array("");
+                }
+                char *pos(freud);
+                for(auto &buf : readBuffers){
+                    memmove(pos,buf->data<void>(),buf->length());
+                    pos += buf->length();
+                }
+            }else{
+                freud = nullptr;
             }
         }else{
             drumlin::buffers_type::value_type &buf(readBuffers.front());
-            allRead.append(buf->data<void>(),buf->length());
+            freud = (char*)malloc(1+(length = buf->length()));
+            memmove(freud,buf->data<void>(),length);
         }
         if(flushBehaviours & SocketFlushBehaviours::Flush){
             readBuffers.clear();
         }
-        return allRead;
+        if(freud)
+            freud[length] = 0;
+        return byte_array(freud,length,true);
     }
 
     void writing()
     {
         WRITELOCK;
         auto p_buffer = writeBuffers.front().get();
-        socket().async_send(asio::buffer(p_buffer->data<void>(),p_buffer->length()),
+        size_t sz;
+        if(synchronousWrite){
+            try{
+                sz = socket().send(asio::buffer(p_buffer->data<void>(),p_buffer->length()));
+                bytesWritten(boost::system::error_code(),sz);
+            }catch(boost::system::system_error error){
+                bytesWritten(error.code(),sz);
+            }
+        }else{
+            socket().async_send(asio::buffer(p_buffer->data<void>(),p_buffer->length()),
                             boost::bind(&Self::bytesWritten,this,boost::asio::placeholders::error,boost::asio::placeholders::bytes_transferred));
+        }
     }
 
     void bytesWritten(boost::system::error_code ec, std::size_t sz)
@@ -294,8 +322,7 @@ public:
         writeBuffers.pop_front();
         if(writeQueueLength()){
             writing();
-        }else{
-            setFinished(true);
+        }else if(finished){
             handler->completing(this);
         }
     }
@@ -343,11 +370,15 @@ public:
 
     void getStatus(json::value &status);
 
-    socket_type &socket(){return m_sock_type;}
+    socket_type &socket(){return *m_sock_type;}
 
     friend class SocketHandler<Protocol>;
     friend class SocketAdapter<Protocol>;
+    void synchronousReads(bool sync){synchronousRead = sync;}
+    void synchronousWrites(bool sync){synchronousWrite = sync;}
 private:
+    bool synchronousRead = false;
+    bool synchronousWrite = false;
     std::size_t m_bytes_transferred;
     recv_buf_type m_recv_buf;
     std::size_t m_bytes_written;
@@ -362,7 +393,7 @@ private:
     Connection<Protocol> *m_connection = nullptr;
     void *tag;
     asio::io_service &m_io_service;
-    socket_type m_sock_type;
+    socket_type *m_sock_type;
 };
 
 } // namespace drumlin

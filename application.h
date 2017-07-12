@@ -39,7 +39,7 @@ public:
     Application(int &argc,char **argv);
     ~Application();
 
-    static mutex thread_critical_section;
+    static mutex critical_section;
 
     void addThread(Thread *thread);
     threads_type findThread(const string &name,ThreadWorker::Type type);

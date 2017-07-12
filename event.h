@@ -63,6 +63,7 @@ public:
      */
     virtual ~Event(){}
     friend ostream &operator <<(ostream &stream, const Event &event);
+    friend logger &operator <<(logger &stream, const Event &event);
     void punt()const;
     void send(Thread *target)const;
 private:
@@ -71,7 +72,7 @@ private:
 };
 
 /**
- * @brief The QSThreadEvent class
+ * @brief The ThreadEvent class
  */
 template <typename T>
 class ThreadEvent : public Event

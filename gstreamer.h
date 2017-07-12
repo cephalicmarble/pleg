@@ -44,7 +44,6 @@ using namespace drumlin;
 #endif
 
 #define PipelineStates ( \
-    StateVoidPending,\
     StateNull,\
     StateReady,\
     StatePaused,\
@@ -80,10 +79,10 @@ public:
     {
         gst_initializer_mutex.lock();
         gst_init(argc,argv);
+        gst_debug_set_active(1);
+        gst_debug_set_colored(1);
+        gst_debug_set_default_threshold(GST_LEVEL_INFO);
         gst_initializer_mutex.unlock();
-//        gst_debug_set_active(1);
-//        gst_debug_set_colored(1);
-//        gst_debug_set_default_threshold(GST_LEVEL_INFO);
     }
     ~gst_initializer()
     {
@@ -97,7 +96,7 @@ class GStreamerPipe :
     public WorkObject
 {
 public:
-    GStreamerPipe(GStreamer *gst,string const& _name);
+    GStreamerPipe(GStreamer *gst,string _name);
     virtual ~GStreamerPipe();
 
     typedef PipelineState State;
@@ -120,7 +119,7 @@ public:
     friend class Sources::GStreamerOffsetSource;
 
     virtual void report(json::value *obj,WorkObject::ReportType type)const;
-    virtual bool open( std::string const& _pipeline);
+    virtual bool open( std::string _pipeline);
     string const& getName()const{return name;}
 protected:
     void stateChange(GstState state);
@@ -150,9 +149,9 @@ class GStreamerSrc :
         public GStreamerPipe
 {
 public:
-    GStreamerSrc(GStreamer *gst,string const& name);
+    GStreamerSrc(GStreamer *gst,string name);
     bool grabFrame();
-    virtual bool open(std::string const& _pipeline);
+    virtual bool open(std::string _pipeline);
     gint getWidth()const{ return width; }
     gint getHeight()const{ return height; }
 
@@ -185,9 +184,9 @@ class GStreamerSink :
         public GStreamerPipe
 {
 public:
-    GStreamerSink(GStreamer *gst,string const &name);
+    GStreamerSink(GStreamer *gst,string name);
 
-    virtual bool open( std::string const& filename );
+    virtual bool open( std::string filename );
     virtual void close();
     virtual void stop();
     friend class GStreamerStreamSource;
@@ -205,12 +204,12 @@ protected:
 class GStreamerStreamSource : public GStreamerSink
 {
 public:
-    GStreamerStreamSource(GStreamer *gst,string const& name);
+    GStreamerStreamSource(GStreamer *gst,string name);
     void start();
     void stop();
     void report(json::value *obj,WorkObject::ReportType type)const;
     void args(Relevance::arguments_type const& args);
-    bool open(std::string const& filename);
+    bool open(std::string filename);
     virtual void need_data(guint32 );
     virtual void enough_data();
     guint64 getTick()const{ return tick; }
@@ -251,8 +250,8 @@ public:
     virtual void shutdown();
     void getStatus(json::value *status)const;
 
-    Sources::GStreamerSampleSource *addPipeline(string const& pipeline,string const& name,guint32 maxSampleSize);
-    Sources::GStreamerOffsetSource *addStream(Relevance::arguments_type const& args,string const& pipeline,string const& name);
+    Sources::GStreamerSampleSource *addPipeline(string pipeline,string name,guint32 maxSampleSize);
+    Sources::GStreamerOffsetSource *addStream(Relevance::arguments_type const& args,string pipeline,string name);
     void nextSample(GStreamerSrc *that,GstSample *sample);
 private:
     connection_type connections;
