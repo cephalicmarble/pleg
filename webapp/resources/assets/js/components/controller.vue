@@ -217,7 +217,7 @@ export default {
         },
         view : function(selection) {
             var that = this;
-            if(selection.type.toLowerCase() == "video"){
+            if(~selection.type.toLowerCase().indexOf("gstreamer")){
 //                var port = this.nextPort();
 //                var p;
 //                if(this.serverStatus.threads._find(function(o){
@@ -269,7 +269,6 @@ export default {
                     that.selectTab("tabVideos");
                     this.$refs.tabset.select(this.$refs.tabVideos);
                 }else{
-                    debugger;
                     this.http({
                         method:"GET",
                         url:"/file/"+selection.name+"?r="+selection.path,
@@ -491,9 +490,8 @@ export default {
             });
         },
         disconnect : function() {
-            var that = this;
             this.http({
-                 url:"/disconnect/"+this.$refs.sources.selection.name,
+                 url:"/disconnect/"+this.$refs.sources.selection.type+"/"+this.$refs.sources.selection.name,
                  method:"PATCH",
             });
         },

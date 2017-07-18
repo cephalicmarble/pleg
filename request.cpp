@@ -57,9 +57,10 @@ void Request::work(Object *,Event *)
 void Request::connection_start()
 {
     lock_guard<recursive_mutex> l(critical_section);
-    thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()),this);
-    Debug() << "Starting thread " << this << *thread;
-    app->addThread(thread);
+    m_thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()));
+    Debug() << "Starting thread " << this << *m_thread;
+    m_thread->setWorker(this);
+    app->addThread(m_thread);
 }
 
 void Request::error(boost::system::error_code ec)
@@ -271,7 +272,6 @@ bool Request::event(Event *pevent)
             break;
         }
         default:
-            Debug() << metaEnum<verbs_type>().toString(verb) << __func__ <<  "unimplemented";
             return false;
         }
         return true;

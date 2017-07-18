@@ -12,8 +12,8 @@ namespace Pleg {
 
 namespace Buffers {
 
-#define DEBUGHEAP 1
-#define DEBUGCACHE 1
+//#define DEBUGHEAP 1
+//#define DEBUGCACHE 1
 
 /**
  * @brief Buffer::Buffer : only constructor, sets timestamp

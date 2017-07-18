@@ -79,9 +79,9 @@ public:
     {
         gst_initializer_mutex.lock();
         gst_init(argc,argv);
-        gst_debug_set_active(1);
-        gst_debug_set_colored(1);
-        gst_debug_set_default_threshold(GST_LEVEL_INFO);
+//        gst_debug_set_active(1);
+//        gst_debug_set_colored(1);
+//        gst_debug_set_default_threshold(GST_LEVEL_INFO);
         gst_initializer_mutex.unlock();
     }
     ~gst_initializer()
@@ -161,7 +161,7 @@ public:
     friend class Sources::GStreamerSampleSource;
 
     virtual void          eos          (){}
-    virtual GstFlowReturn new_preroll  (){ return GST_FLOW_EOS; }
+    virtual GstFlowReturn new_preroll  (){ return GST_FLOW_OK; }
     virtual GstFlowReturn new_sample   ();
 protected:
     bool stopped = true;
@@ -236,15 +236,15 @@ public:
     GStreamer(drumlin::Thread *_thread):
         ThreadWorker(ThreadType_gstreamer,_thread)
     {
+        m_type = ThreadType_gstreamer;
     }
     virtual ~GStreamer() {
         deleting = true;
-        lock_guard<mutex> l(getThread()->critical_section);
         connections.clear();
-        for(jobs_type::value_type const& obj : jobs){
+        for(jobs_type::value_type const& obj : m_jobs){
             obj.second->stop();
         }
-        jobs.removeAll();
+        m_jobs.removeAll();
     }
     bool event(Event *event);
     virtual void shutdown();

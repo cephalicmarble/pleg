@@ -42,8 +42,8 @@ const char *ThreadEvent<const char>::getPointer<const char>()const
  */
 void Event::send(Thread *target)const
 {
-    if(!quietEvents)
-        Debug() << "sending" << metaEnum<Event::Type>().toString(type()) << ":" << getName() << "from" << this_thread::get_id() << "to" << target->getTask();
+//    if(!quietEvents)
+//        Debug() << "sending" << metaEnum<Event::Type>().toString(type()) << ":" << getName() << "from" << this_thread::get_id() << "to" << target->getTask();
     target->post(const_cast<Event*>(static_cast<const Event*>(this)));
 }
 
@@ -52,8 +52,8 @@ void Event::send(Thread *target)const
  */
 void Event::punt()const
 {
-    if(!quietEvents)
-        Debug() << "punting" << getName() << ":" << metaEnum<Event::Type>().toString(type()) << "to application";
+//    if(!quietEvents)
+//        Debug() << "punting" << getName() << ":" << metaEnum<Event::Type>().toString(type()) << "to application";
     drumlin::iapp->post(const_cast<Event*>(static_cast<const Event*>(this)));
 }
 

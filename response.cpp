@@ -189,10 +189,12 @@ void Get::_get()
         fclose(fp);
 
         ifstream file(filename);
-        stringstream ss;
-        ss << file.rdbuf();
-        getRequest()->getSocketRef().write(ss.str());
+        gint64 size;
+        char *mem = (char*)malloc(size = filesystem::file_size(filesystem::path(filename)));
+        file.read(mem,size);
         file.close();
+        getRequest()->getSocketRef().write(byte_array(mem,size));
+        free(mem);
         filesystem::remove(filesystem::path(filename));
 
     }else{
@@ -628,31 +630,54 @@ void Patch::_meta()
 //    }while(false);
 //}
 
-///**
-// * @brief Patch::_disconnect : PATCH /disconnect/<mac> destroys the worker(s)
-// * @param mac tring const&
-// */
-//void Patch::_disconnect()
-//{
-//    tring const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
-//    qDebug() << "disconnecting" << mac;
-//    Bluetooth *bluet(nullptr);
-//    BluetoothLEDevice *dev(nullptr);
-//    threads_type threads(app->findThread(mac,ThreadWorker::ThreadType::bluez));
-//    if(0==std::distance(threads.begin(),threads.end())){
-//        getRequest()->getSocket()->write(mac+" not found\n");
-//        return;
-//    }
-//    for(auto thread : threads){
-//        bluet = dynamic_cast<Bluetooth*>(thread->getWorker());
-//        dev = bluet->findDevice(mac);
-//        if(nullptr==dev){
-//            continue;
+/**
+ * @brief Patch::_disconnect : PATCH /disconnect/<mac> destroys the worker(s)
+ * @param mac tring const&
+ */
+void Patch::_disconnect()
+{
+    bool ok(false);
+    auto type = metaEnum<Sources::Source::Type>().toEnum(getRequest()->getRelevanceRef().arguments.at("type"),&ok);
+    if(!ok){
+        getRequest()->getSocketRef().write(byte_array("Source type not recognised\n"));
+        return;
+    }
+    switch(type){
+    case Source_Gstreamer:
+    {
+        threads_type threads(app->findThread("all",ThreadType_gstreamer));
+        if(0==std::distance(threads.begin(),threads.end())){
+            getRequest()->getSocketRef().write(byte_array("GStreamer not active!\n"));
+            return;
+        }
+        for(auto thread : threads){
+            make_pod_event(GstRemoveJob,"disconnect",getRequest()->getRelevanceRef().getSourceName())->send(thread);
+        }
+        break;
+    }
+    default:
+    {
+//        string mac(getRequest()->getRelevanceRef().arguments.at("mac"));
+//        Debug() << "disconnecting" << mac;
+//        Bluetooth *bluet(nullptr);
+//        BluetoothLEDevice *dev(nullptr);
+//        threads_type threads(app->findThread(mac,ThreadWorker::ThreadType::bluez));
+//        if(0==std::distance(threads.begin(),threads.end())){
+//            getRequest()->getSocket()->write(mac+" not found\n");
+//            return;
 //        }
-//        qLog() << "Disconnecting" << mac.toStdString();
-//        bluet->disconnectDevice(dev);
-//    }
-//}
+//        for(auto thread : threads){
+//            bluet = dynamic_cast<Bluetooth*>(thread->getWorker());
+//            dev = bluet->findDevice(mac);
+//            if(nullptr==dev){
+//                continue;
+//            }
+//            qLog() << "Disconnecting" << mac.toStdString();
+//            bluet->disconnectDevice(dev);
+//        }
+    }
+    }
+}
 
 ///**
 // * @brief Patch::_scan : PATCH /scan

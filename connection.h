@@ -4,6 +4,7 @@
 #include <memory>
 using namespace std;
 #include <boost/asio.hpp>
+#include <boost/thread/mutex.hpp>
 using namespace boost;
 #include "glib.h"
 #include "socket.h"
@@ -112,7 +113,7 @@ public:
     typedef typename Protocol::acceptor acceptor_type;
     typedef typename Protocol::resolver resolver_type;
     typedef AsioServer<connection_type,address_type,Protocol> server_type;
-    AsioServer(string host,int port):addr(),m_endpoint(host.length()?addr.from_string(host):addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
+    AsioServer(string host,int port):m_addr(),m_endpoint(host.length()?m_addr.from_string(host):m_addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
     {
     }
     void start()
@@ -136,7 +137,7 @@ public:
             delete new_connection;
         }
     }
-    address_type addr;
+    address_type m_addr;
     endpoint_type m_endpoint;
     acceptor_type m_acceptor;
     void stop()

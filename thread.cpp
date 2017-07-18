@@ -14,24 +14,17 @@ using namespace tao;
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/recursive_mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
-#include <boost/thread/shared_lock_guard.hpp>
 #include <boost/thread/sync_queue.hpp>
 using namespace boost;
 
 namespace drumlin {
 
-mutex Thread::critical_section;
 /**
  * @brief Thread::Thread : construct a new thread, to be Pleg::Server::addThread(*,bool start)-ed
  * @param _task string name
  */
-Thread::Thread(string _task) : m_thread(&Thread::run,this),task(_task)
+Thread::Thread(string _task) : m_thread(&Thread::run,this),m_task(_task)
 {
-}
-
-Thread::Thread(string _task,ThreadWorker *_worker) : m_thread(&Thread::run,this),task(_task)
-{
-    setWorker(_worker);
 }
 
 /**
@@ -40,8 +33,8 @@ Thread::Thread(string _task,ThreadWorker *_worker) : m_thread(&Thread::run,this)
 Thread::~Thread()
 {
     Debug() << __func__ << this;
-    deleting = true;
-    if(!ready)
+    m_deleting = true;
+    if(!m_ready)
         return;
     if(getWorker())
         delete getWorker();
@@ -51,9 +44,9 @@ void Thread::terminate()
 {
     Debug() << __func__ << this;
     {
-        if(terminated)
+        if(m_terminated)
             return;
-        terminated = true;
+        m_terminated = true;
     }
     quit();
 }
@@ -78,7 +71,7 @@ double Thread::elapsed()
  */
 string Thread::getName()
 {
-    return metaEnum<ThreadWorker::Type>().toString(worker->getType()) + ":" + task;
+    return metaEnum<ThreadWorker::Type>().toString(m_worker->getType()) + ":" + m_task;
 }
 
 /**
@@ -115,7 +108,7 @@ bool Thread::event(Event *pevent)
             break;
         }
         default:
-            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << __func__ <<  "unimplemented";
+            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << __FILE__ << __func__ <<  "unimplemented";
             return false;
         }
         return true;
@@ -140,46 +133,45 @@ void Thread::run()
     }
     getWorker()->critical_section.unlock();
     {
-        ready = true;
+        m_ready = true;
     }
     make_event(Event::Type::ThreadWork,"work")->send(this);
-    if(!terminated)
+    if(!m_terminated)
         exec();
     terminate();
     if(getWorker()){
-        worker->shutdown();
-        delete worker;
-        worker = nullptr;
+        m_worker->shutdown();
+        delete m_worker;
+        m_worker = nullptr;
     }
     make_event(Event::Type::ThreadRemove,"removeThread",this)->punt();
 }
 
 void Thread::post(Event *event)
 {
-    CRITICAL
+    lock_guard<recursive_mutex> l(m_critical_section);
     m_queue.push(event);
 }
 
 void Thread::exec()
 {
-    while(!deleting && !terminated && !m_thread.interruption_requested()){
+    while(!m_deleting && !m_terminated && !m_thread.interruption_requested()){
         try{
             this_thread::interruption_point();
-            if(!critical_section.try_lock()){
-                this_thread::yield();
-                continue;
+            queue_type::value_type pevent(nullptr);
+            {
+                lock_guard<recursive_mutex> l(m_critical_section);
+                if(!m_queue.empty()) {
+                    pevent = m_queue.front();
+                    m_queue.pop();
+                }
             }
-            if(!m_queue.empty()) {
-                queue_type::value_type pevent(m_queue.front());
-                m_queue.pop();
-                critical_section.unlock();
+            if(pevent != nullptr) {
                 if(event(pevent)){
                     delete pevent;
                 }else{
                     Critical() << __func__ << "leaking event" << *pevent;
                 }
-            }else{
-                critical_section.unlock();
             }
             this_thread::yield();
         }catch(thread_interrupted &ti){
@@ -200,15 +192,15 @@ void ThreadWorker::stop()
 
 recursive_mutex ThreadWorker::critical_section;
 
-ThreadWorker::ThreadWorker(Type _type,Object *parent = nullptr) : Object(parent),type(_type)
+ThreadWorker::ThreadWorker(Type _type,Object *parent = nullptr) : Object(parent),m_type(_type)
 {
 }
 
-ThreadWorker::ThreadWorker(Type _type,string task) : Object(),type(_type)
+ThreadWorker::ThreadWorker(Type _type,string task) : Object(),m_type(_type)
 {
     lock_guard<recursive_mutex> l(critical_section);
-    thread = new Thread(task);
-    thread->setWorker(this);
+    m_thread = new Thread(task);
+    m_thread->setWorker(this);
 }
 
 /**
@@ -217,11 +209,11 @@ ThreadWorker::ThreadWorker(Type _type,string task) : Object(),type(_type)
  * Sets worker to this, and moves the worker to the (already created) thread.
  * @param _thread Thread*
  */
-ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),thread(_thread),type(_type)
+ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),m_thread(_thread),m_type(_type)
 {
     lock_guard<recursive_mutex> l(critical_section);
-    thread = _thread;
-    thread->setWorker(this);
+    m_thread = _thread;
+    m_thread->setWorker(this);
 }
 
 /**
@@ -229,8 +221,8 @@ ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),thread(_thread
  */
 ThreadWorker::~ThreadWorker()
 {
-    if(thread)
-        thread->worker = nullptr;
+    if(m_thread)
+        m_thread->m_worker = nullptr;
 }
 
 /**
@@ -246,7 +238,7 @@ void ThreadWorker::report(json::value *obj,ReportType type)const
 {
     auto &map(obj->get_object());
     map.insert({"task",getThread()->getTask()});
-    map.insert({"type",string(metaEnum<Type>().toString(this->type))});
+    map.insert({"type",string(metaEnum<Type>().toString(this->m_type))});
     if(type & WorkObject::ReportType::Elapsed){
         map.insert({"elapsed",getThread()->elapsed()});
     }
@@ -256,7 +248,7 @@ void ThreadWorker::report(json::value *obj,ReportType type)const
     if(type & WorkObject::ReportType::Jobs){
         if(map.end()==map.find("jobs"))
             map.insert({"jobs",json::empty_object});
-        for(jobs_type::value_type const& job : jobs){
+        for(jobs_type::value_type const& job : m_jobs){
             json::value job_obj(json::empty_object);
             job.second->report(&job_obj,type);
             map.at("jobs").get_object().insert({job.first,job_obj});
@@ -289,7 +281,7 @@ void ThreadWorker::writeToStream(std::ostream &stream)const
  */
 Thread::operator const char*()const
 {
-    lock_guard<mutex> l(critical_section);
+    lock_guard<recursive_mutex> l(const_cast<recursive_mutex&>(m_critical_section));
     static char *buf;
     if(buf)free(buf);
     std::stringstream ss;
@@ -306,7 +298,10 @@ Thread::operator const char*()const
 logger &operator<<(logger &stream,const Thread &rel)
 {
     stream << rel.getBoostThread().get_id();
-    rel.getWorker()->writeToStream((ostream&)stream);
+    auto tmp = rel.getWorker();
+    if(tmp){
+        tmp->writeToStream((ostream&)stream);
+    }
     return stream;
 }
 

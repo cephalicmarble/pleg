@@ -108,7 +108,7 @@ GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::stri
     type = Source_Gstreamer;
     Config::JsonConfig gst_config("./gstreamer.json");
     string key("/pipes/");
-    meta = &gst_config.at(key+src.getName());
+    meta.reset(new json::value(gst_config.at(key+src.getName())));
 }
 
 void GStreamerSampleSource::writeNextSample(GstSample *sample)

@@ -66,7 +66,7 @@ void Server::defineRoutes()
 
 //    addRoute(Uri::parser("connect/{mac?}/{name?}")      ,"_connectSource"       ,PATCH);
 //    addRoute(Uri::parser("connect/{mac?}")              ,"_connect"             ,PATCH);
-//    addRoute(Uri::parser("disconnect/{mac?}")           ,"_disconnect"          ,PATCH);
+    patch(Uri::parser("disconnect/{type}/{source}")  ,&Patch::_disconnect);
 //    addRoute(Uri::parser("remove/{source?}")            ,"_removeSource"        ,PATCH);
 
     patch(Uri::parser("pipe/{name?}")                ,&Patch::_openPipe);
@@ -136,28 +136,30 @@ void Server::writeLog()
 void Server::getStatus(json::value *status)const
 {
     ApplicationBase::getStatus(status);
-    lock_guard<boost::mutex> l(critical_section); //Server inherits Application<T>
+    {
+        lock_guard<boost::mutex> l(critical_section); //Server inherits Application<T>
 
-    json::value requests(json::empty_array);
-    json::array_t &threads(status->get_object().at("threads").get_array());
+        json::value requests(json::empty_array);
+        json::array_t &threads(status->get_object().at("threads").get_array());
 
-    for(json::array_t::iterator::value_type &thread : threads){
-        if(std::string::npos != thread.get_object().at("task").get_string().find("Request")){
-            requests.get_array().push_back(json::value(thread));
+        for(json::array_t::iterator::value_type &thread : threads){
+            if(std::string::npos != thread.get_object().at("task").get_string().find("Request")){
+                requests.get_array().push_back(json::value(thread));
+            }
         }
-    }
 
-    if(distance(log.begin(),log.end())){
-        json::value _log(json::empty_array);
-        json::array_t &logs(_log.get_array());
-        for(string const& str : log){
-            logs.push_back(str);
+        if(distance(log.begin(),log.end())){
+            json::value _log(json::empty_array);
+            json::array_t &logs(_log.get_array());
+            for(string const& str : log){
+                logs.push_back(str);
+            }
+            status->get_object().insert({"log",_log});
+            const_cast<Pleg::Server*>(this)->writeLog();
         }
-        status->get_object().insert({"log",_log});
-        const_cast<Pleg::Server*>(this)->writeLog();
-    }
 
-    status->get_object().insert({"requests",requests});
+        status->get_object().insert({"requests",requests});
+    }
 }
 
 } // namespace Pleg

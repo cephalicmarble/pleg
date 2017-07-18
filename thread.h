@@ -44,7 +44,7 @@ class StatusReporter {
 
 class ThreadWorker;
 
-#define CRITICAL lock_guard<mutex> l(critical_section);
+#define CRITICAL lock_guard<recursive_mutex> l(const_cast<recursive_mutex&>(m_critical_section));
 
 /**
  * @brief The Thread class
@@ -53,34 +53,38 @@ class Thread
 {
 public:
     typedef queue<Event*> queue_type;
-    bool isTerminated(){ return terminated; }
+    bool isTerminated(){ return m_terminated; }
     void terminate();
-    static mutex critical_section;
+    recursive_mutex m_critical_section;
     Thread(string _task);
-    Thread(string _task,ThreadWorker *_worker);
     boost::thread const& getBoostThread()const{ CRITICAL return m_thread; }
+    /**
+     * @brief setWorker
+     * @param _worker ThreadWorker*
+     */
+    void setWorker(ThreadWorker *_worker){ CRITICAL m_worker = _worker; }
     /**
      * @brief getWorker
      * @return ThreadWorker*
      */
-    ThreadWorker *getWorker()const{ CRITICAL return worker; }
+    ThreadWorker *getWorker()const{ CRITICAL return m_worker; }
     /**
      * @brief isStarted
      * @return bool
      */
-    bool isStarted()const{ return ready; }
+    bool isStarted()const{ return m_ready; }
     string getName();
     /**
      * @brief getTask
      * @return string
      */
-    string getTask()const{ CRITICAL return task; }
+    string getTask()const{ CRITICAL return m_task; }
     /**
      * @brief setTask
      * @param _task string
      * @return Thread*
      */
-    Thread *setTask(string _task){ task = _task; return this; }
+    Thread *setTask(string _task){ m_task = _task; return this; }
     virtual ~Thread();
     double elapsed();
 protected:
@@ -100,18 +104,13 @@ public:
             m_thread.try_join_for(chrono::milliseconds(millis));
     }
 private:
-    boost::thread m_thread;
     queue_type m_queue;
-    string task;
-    ThreadWorker *worker;
-    bool ready = false;
-    bool deleting = false;
-    bool terminated = false;
-    /**
-     * @brief setWorker
-     * @param _worker ThreadWorker*
-     */
-    void setWorker(ThreadWorker *_worker){ worker = _worker; }
+    ThreadWorker *m_worker = nullptr;
+    bool m_ready = false;
+    bool m_deleting = false;
+    bool m_terminated = false;
+    boost::thread m_thread;
+    string m_task;
 };
 
 /**
@@ -126,7 +125,7 @@ public:
     double elapsed;
     typedef Registry<WorkObject> jobs_type;
 protected:
-    jobs_type jobs;
+    jobs_type m_jobs;
 public:
     typedef ThreadType Type;
     /**
@@ -142,17 +141,17 @@ public:
      * @brief getThread
      * @return  Thread*
      */
-    Thread *getThread()const{ return thread; }
+    Thread *getThread()const{ return m_thread; }
     void signalTermination();
     /**
      * @brief getType
      * @return ThreadType
      */
-    Type getType()const{ return type; }
+    Type getType()const{ return m_type; }
     /**
      * @brief start
      */
-    jobs_type const& getJobs()const{ return jobs; }
+    jobs_type const& getJobs()const{ return m_jobs; }
     void stop();
     ThreadWorker(Type _type,Object *);
     ThreadWorker(Type _type,string task);
@@ -165,8 +164,8 @@ public:
     void postWork(Object *sender);
     friend class Server;
 protected:
-    Thread *thread = nullptr;
-    Type type;
+    Thread *m_thread = nullptr;
+    Type m_type;
 };
 
 } // namespace drumlin

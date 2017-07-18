@@ -147,7 +147,7 @@ public:
     void _meta();
 //    void _connect();
 //    void _connectSource();
-//    void _disconnect();
+    void _disconnect();
 //    void _scan();
     void _openPipe();
     void _config();

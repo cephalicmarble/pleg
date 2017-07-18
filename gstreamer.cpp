@@ -279,7 +279,7 @@ bool GStreamerPipe::open( std::string filename )
 
     GstElement *_element = NULL;
     gboolean done = false;
-    gchar* name = NULL;
+    string name;
     GValue value = G_VALUE_INIT;
 
     while (!done)
@@ -289,17 +289,16 @@ bool GStreamerPipe::open( std::string filename )
         case GST_ITERATOR_OK:
             _element = GST_ELEMENT (g_value_get_object (&value));
             name = gst_element_get_name(_element);
-            if (name)
+            if (name.length())
             {
-                if((done = (strstr(name, "sink0") != NULL)))
+                if(name == "sink0")
                 {
                     element = GST_ELEMENT ( gst_object_ref (_element) );
                 }
-               else if((done = (strstr(name, "src0") != NULL)))
+               else if(name == "src0")
                 {
                     element = GST_ELEMENT ( gst_object_ref (_element) );
                 }
-                g_free(name);
             }
             g_value_unset (&value);
 
@@ -760,6 +759,7 @@ void GStreamer::nextSample(GStreamerSrc *that,GstSample *sample)
             connection.second->writeNextSample(sample);
         }
     }
+    this_thread::yield();
 }
 
 /**
@@ -770,7 +770,7 @@ void GStreamer::shutdown()
     LOCK;
     Debug() << this << __func__;
     connections.clear();
-    for(jobs_type::value_type const& obj : jobs){
+    for(jobs_type::value_type const& obj : m_jobs){
         obj.second->stop();
     }
     signalTermination();
@@ -843,13 +843,13 @@ bool GStreamer::event(Event *pevent)
         {
             if(!isDeleting()){
                 LOCK;
-                lock_guard<boost::mutex> l2(getThread()->critical_section);
-                jobs.remove(pod_event_cast<std::string>(pevent)->getVal().c_str());
+                lock_guard<recursive_mutex> l2(getThread()->m_critical_section);
+                m_jobs.remove(pod_event_cast<std::string>(pevent)->getVal().c_str());
             }
             break;
         }
         default:
-            Debug() << __func__ << "Unimplemented";
+            Debug() << __FILE__ << __func__ << "Unimplemented";
             return false;
         }
         return true;
@@ -862,7 +862,7 @@ void GStreamer::GStreamer::getStatus(json::value *status)const
     LOCK;
     using namespace tao;
     json::value array(json::empty_array);
-    for(typename ThreadWorker::jobs_type::value_type const& pipeline : jobs){
+    for(typename ThreadWorker::jobs_type::value_type const& pipeline : m_jobs){
         json::value obj(json::empty_object);
         GStreamerPipe *pipe(dynamic_cast<GStreamerPipe*>(pipeline.second));
         if(!pipe)
@@ -882,10 +882,11 @@ Sources::GStreamerSampleSource *GStreamer::addPipeline(std::string pipeline,std:
         delete source;
         return nullptr;
     }
-    jobs.add(name,source);
+    m_jobs.add(name,source);
     source->src.grabFrame();           //preroll / alloc
-    Sources::sources.add(name,source); //register
     source->src.start();
+    Sources::sources.add(name,source); //register
+    connections.insert({&source->src,source});
     Debug() << source << "added.";
     return source;
 }
@@ -905,7 +906,7 @@ Sources::GStreamerOffsetSource *GStreamer::addStream(Relevance::arguments_type c
         delete offset;
         return nullptr;
     }
-    jobs.add(name,offset);
+    m_jobs.add(name,offset);
     offset->src.start();
     connections.insert({&source->src,offset});
     Debug() << offset << "added.";

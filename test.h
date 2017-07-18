@@ -76,11 +76,12 @@ public:
            string _port,
            TestType _type)
         : ThreadWorker(ThreadType_test,(Object*)0),SockHandler(),Client(drumlin::io_service,_host,lexical_cast<int>(_port))
-        ,type(_type),host(_host),port(_port),m_socket(drumlin::io_service,(Object*)0,this,Client::getAsioSocket())
+        ,m_type(_type),host(_host),port(_port),m_socket(drumlin::io_service,(Object*)0,this,Client::getAsioSocket())
     {
         tracepoint;
         lock_guard<recursive_mutex> l(critical_section);
-        thread = new Thread(metaEnum<TestType>().toString(_type),this);
+        m_thread = new Thread(metaEnum<TestType>().toString(_type));
+        m_thread->setWorker(this);
     }
     /**
      * @brief Test::~Test
@@ -99,7 +100,7 @@ public:
         tracepoint
         url = _url;
         string task;
-        switch(type){
+        switch(m_type){
         case test_GET:task = "GET";break;
         case test_POST:task = "POST";break;
         case test_PATCH:task = "PATCH";break;
@@ -129,7 +130,7 @@ public:
     {
         tracepoint
         string_list list;
-        switch(type){
+        switch(m_type){
         case test_UDP:
             list << "UDP";
             break;
@@ -168,7 +169,7 @@ public:
 
         Debug() << &m_socket << " opened" << this_thread::get_id();
         string_list protocol;
-        switch(type){
+        switch(m_type){
         case test_UDP:
             protocol << "HELO";
             break;
@@ -313,7 +314,7 @@ public:
     }
 
 private:
-    TestType type;
+    TestType m_type;
     string host;
     string port;
     string url;

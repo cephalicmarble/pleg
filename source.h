@@ -325,7 +325,7 @@ protected:
     void writeNextSample(GstSample *sample);
     GStreamer::GStreamerSrc src;
     guint32 m_maxSampleSize;
-    json::value *meta;
+    unique_ptr<json::value> meta;
     friend class GStreamer::GStreamerStreamSource;
     friend class GStreamer::GStreamer;
 };

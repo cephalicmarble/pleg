@@ -148,7 +148,6 @@ void Application<T>::getStatus(json::value *status)const
     for(threads_reg_type::value_type const& thread : *threads){
         json::value obj(json::empty_object);
         Thread *_thread(thread.second->getThread());
-        lock_guard<mutex> l(_thread->critical_section);
         if(!_thread->isStarted() || _thread->isTerminated())
             continue;
         thread.second->writeToObject(&obj);//report the thread
