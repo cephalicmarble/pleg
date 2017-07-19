@@ -9,7 +9,7 @@ using namespace std;
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/sync_queue.hpp>
 using namespace boost;
-#include "pleg.h"
+#include "drumlin.h"
 #include "object.h"
 #include "metatypes.h"
 #include "registry.h"

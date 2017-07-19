@@ -3,6 +3,9 @@
 
 #include <pleg.h>
 #include <sstream>
+#include <boost/thread/recursive_mutex.hpp>
+#include <boost/thread/lock_guard.hpp>
+using namespace boost;
 
 namespace Pleg {
 

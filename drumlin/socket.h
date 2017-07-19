@@ -1,8 +1,7 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
-#include "pleg.h"
-using namespace Pleg;
+#include "drumlin.h"
 #include "tao_forward.h"
 using namespace tao;
 #include <memory>

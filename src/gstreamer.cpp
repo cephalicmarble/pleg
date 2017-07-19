@@ -77,7 +77,7 @@ GStreamerPipe::~GStreamerPipe()
     Debug() << this << __func__;
     close();
     if(!getGStreamer()->isDeleting())
-        make_pod_event(Event::Type::GstRemoveJob,__func__,getName())->send(getGStreamer()->getThread());
+        make_pod_event(EventType::GstRemoveJob,__func__,getName())->send(getGStreamer()->getThread());
 }
 
 void GStreamerPipe::handleMessages()
@@ -783,14 +783,14 @@ void GStreamer::shutdown()
  */
 bool GStreamer::event(Event *pevent)
 {
-    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
+    quietDebug() << this << __func__ << metaEnum<EventType>().toString((EventType)pevent->type());
     if((guint32)pevent->type() < (guint32)Event_first
             || (guint32)pevent->type() > (guint32)Event_last){
         return false;
     }
     do{
         switch(pevent->type()){
-        case Event::Type::GstConnectDevices:
+        case EventType::GstConnectDevices:
         {
             Config::JsonConfig gst_config("./gstreamer.json");
             json::value pipes(gst_config.at("/pipes"));
@@ -799,7 +799,7 @@ bool GStreamer::event(Event *pevent)
             }
             break;
         }
-        case Event::Type::GstConnectPipeline:
+        case EventType::GstConnectPipeline:
         {
             Config::JsonConfig gst_config("./gstreamer.json");
             Request *request;
@@ -810,8 +810,8 @@ bool GStreamer::event(Event *pevent)
             make_event(pevent->type(),"open")->send(request->getThread());
             break;
         }
-        case Event::Type::GstStreamPort:
-        case Event::Type::GstStreamFile:
+        case EventType::GstStreamPort:
+        case EventType::GstStreamFile:
         {
             Config::JsonConfig gst_config("./gstreamer.json");
             Request *request;
@@ -834,12 +834,12 @@ bool GStreamer::event(Event *pevent)
             make_event(pevent->type(),"open")->send(request->getThread());
             break;
         }
-        case Event::Type::GstStreamEnd:
+        case EventType::GstStreamEnd:
         {
             delete event_cast<Object>(pevent)->getPointer();
             break;
         }
-        case Event::Type::GstRemoveJob:
+        case EventType::GstRemoveJob:
         {
             if(!isDeleting()){
                 LOCK;

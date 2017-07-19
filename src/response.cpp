@@ -501,7 +501,7 @@ void Post::teeSourcePort()
             return job.first == (rel.arguments.at("source")+".tee");
         })) return;
         Log() << "opening udp tee at" << rel.arguments.at("@ip") << rel.arguments.at("@port");
-        make_pod_event(Event::Type::GstStreamPort,"openSourcePort",getRequest())->send(thread);
+        make_pod_event(EventType::GstStreamPort,"openSourcePort",getRequest())->send(thread);
         break;
     }
 }
@@ -594,7 +594,7 @@ void Patch::_meta()
 //{
 //    string const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
 //    Log() << "Connecting all services on device" << mac.toStdString();
-//    make_pod_event(Event::Type::BluetoothStartThread,"startThread",mac)->punt();
+//    make_pod_event(EventType::BluetoothStartThread,"startThread",mac)->punt();
 //    this_thread::sleep_for(1000000000);
 //}
 
@@ -604,7 +604,7 @@ void Patch::_meta()
 //    threads_type threads(app->findThread("all",ThreadWorker::ThreadType::bluez));
 //    do{
 //        if(distance(threads.begin(),threads.end())<1){
-//            make_pod_event(Event::Type::BluetoothStartThread,"startThread",string("bluez"))->punt();
+//            make_pod_event(EventType::BluetoothStartThread,"startThread",string("bluez"))->punt();
 //            Log() << "Starting bluetooth thread.";
 //            break;
 //        }
@@ -709,7 +709,7 @@ void Patch::_openPipe()
         GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
             continue;
-        make_event(Event::Type::GstConnectPipeline,__func__,getRequest())->send(gst->getThread());
+        make_event(EventType::GstConnectPipeline,__func__,getRequest())->send(gst->getThread());
     }
 }
 
@@ -739,7 +739,7 @@ void Patch::_shutdown()
     Log() << "Shutting down...";
     getRequest()->getSocketRef().write(string("Shutting down..."));
     main_server->closed = true;
-    make_event(Event::Type::ApplicationClose,"shutting down")->punt();
+    make_event(EventType::ApplicationClose,"shutting down")->punt();
 }
 
 /**
@@ -750,7 +750,7 @@ void Patch::_restart()
     Log() << "Restarting...";
     getRequest()->getSocketRef().write(string("Restarting..."));
     main_server->closed = true;
-    make_event(Event::Type::ApplicationClose,"restarting",(Object*)1UL)->punt();
+    make_event(EventType::ApplicationClose,"restarting",(Object*)1UL)->punt();
 }
 
 /**
@@ -777,7 +777,7 @@ void Patch::_removeSource()
             Log() << statusCode;
             return;
         }
-        make_pod_event(Event::Type::GstRemoveJob,__func__,gstreamer_source->getName())->send(threads[0]);
+        make_pod_event(EventType::GstRemoveJob,__func__,gstreamer_source->getName())->send(threads[0]);
     }
 }
 

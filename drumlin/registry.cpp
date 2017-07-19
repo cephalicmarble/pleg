@@ -31,7 +31,6 @@ void Registry<Type>::remove(const std::string &str,bool noDelete)
     }
 }
 
-template class Registry<Pleg::Sources::Source>;
 template class Registry<drumlin::ThreadWorker>;
 
 } // namespace drumlin

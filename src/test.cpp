@@ -8,7 +8,6 @@ using namespace std;
 #include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
-#include "plegapp.h"
 #include "thread.h"
 #include "test.h"
 #include "event.h"

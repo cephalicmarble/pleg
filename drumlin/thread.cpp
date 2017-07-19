@@ -1,5 +1,4 @@
-#include <pleg.h>
-using namespace Pleg;
+#include <drumlin.h>
 #include <tao/json.hpp>
 using namespace tao;
 #include "thread.h"
@@ -20,7 +19,7 @@ using namespace boost;
 namespace drumlin {
 
 /**
- * @brief Thread::Thread : construct a new thread, to be Pleg::Server::addThread(*,bool start)-ed
+ * @brief Thread::Thread : construct a new thread, to be Application<T>::addThread(*,bool start)-ed
  * @param _task string name
  */
 Thread::Thread(string _task) : m_thread(&Thread::run,this),m_task(_task)
@@ -87,36 +86,31 @@ bool Thread::event(Event *pevent)
     if(getWorker()->event(pevent)){
         return true;
     }
-    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
-    if((guint32)pevent->type() < (guint32)Event_first
-            || (guint32)pevent->type() > (guint32)Event_last){
+    quietDebug() << this << __func__ << metaEnum<DrumlinEventType>().toString((DrumlinEventType)pevent->type());
+    if((guint32)pevent->type() < (guint32)DrumlinEventEvent_first
+            || (guint32)pevent->type() > (guint32)DrumlinEventEvent_last){
         return false;
     }
-    if((guint32)pevent->type() > (guint32)Event::Type::Thread_first
-            && (guint32)pevent->type() < (guint32)Event::Type::Thread_last){
+    if((guint32)pevent->type() > (guint32)DrumlinEventThread_first
+            && (guint32)pevent->type() < (guint32)DrumlinEventThread_last){
         quietDebug() << pevent->getName();
         switch(pevent->type()){
-        case Event::Type::ThreadWork:
+        case DrumlinEventThreadWork:
         {
             getWorker()->work(event_cast<Object>(pevent)->getPointer(),pevent);
             break;
         }
-        case Event::Type::ThreadShutdown:
+        case DrumlinEventThreadShutdown:
         {
-            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << "invocation of" << pevent->getName();
             quit();
             break;
         }
         default:
-            quietDebug() << metaEnum<Event::Type>().toString(pevent->type()) << __FILE__ << __func__ <<  "unimplemented";
+            quietDebug() << metaEnum<DrumlinEventType>().toString((DrumlinEventType)pevent->type()) << __FILE__ << __func__ <<  "unimplemented";
             return false;
         }
         return true;
     }
-    //        quietDebug() << "signalling" << pevent << "in" << QThread::currentThread() << "***" << pevent->getName();
-    //        event->setAccepted(QMetaMethod::fromSignal(&ThreadWorker::signalEventFilter)
-    //                           .invoke(getWorker(),Qt::DirectConnection,Q_ARG(QObject*,this),Q_ARG(Event*,pevent->clone())));
-    //        quietDebug() << "accepted?" << event->isAccepted();
     return false;
 }
 
@@ -135,7 +129,7 @@ void Thread::run()
     {
         m_ready = true;
     }
-    make_event(Event::Type::ThreadWork,"work")->send(this);
+    make_event(DrumlinEventThreadWork,"work")->send(this);
     if(!m_terminated)
         exec();
     terminate();
@@ -144,7 +138,7 @@ void Thread::run()
         delete m_worker;
         m_worker = nullptr;
     }
-    make_event(Event::Type::ThreadRemove,"removeThread",this)->punt();
+    make_event(DrumlinEventThreadRemove,"removeThread",this)->punt();
 }
 
 void Thread::post(Event *event)
@@ -258,7 +252,7 @@ void ThreadWorker::report(json::value *obj,ReportType type)const
 
 void ThreadWorker::postWork(Object *sender)
 {
-    make_event(Event::Type::ThreadWork,__func__,sender)->send(getThread());
+    make_event(DrumlinEventThreadWork,__func__,sender)->send(getThread());
 }
 
 /* STREAM OPERATORS */

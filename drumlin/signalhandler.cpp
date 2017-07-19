@@ -1,12 +1,10 @@
-#include <pleg.h>
-using namespace Pleg;
+#include <drumlin.h>
 #include <assert.h>
 #include <boost/lexical_cast.hpp>
 using namespace boost;
 #include "signalhandler.h"
 #include "cursor.h"
 #include "event.h"
-#include "server.h"
 #include "application.h"
 using namespace drumlin;
 
@@ -87,11 +85,10 @@ SignalHandler::~SignalHandler()
 
 bool SignalHandler::handleSignal(int signal)
 {
-    if(main_server)main_server->writeLog();
     if(Tracer::tracer!=nullptr){
         Tracer::endTrace();
     }
-    make_event(Event::Type::ApplicationShutdown,lexical_cast<string>(signal).c_str(),(Object*)(gint64)signal)->punt();
+    make_event(DrumlinEventApplicationShutdown,lexical_cast<string>(signal).c_str(),(Object*)(gint64)signal)->punt();
     return true;
 }
 

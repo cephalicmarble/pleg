@@ -255,18 +255,18 @@ void Request::getStatus(json::value *status)const{
  */
 bool Request::event(Event *pevent)
 {
-    quietDebug() << this << __func__ << metaEnum<Event::Type>().toString(pevent->type());
+    quietDebug() << this << __func__ << metaEnum<EventType>().toString((EventType)pevent->type());
     if((guint32)pevent->type() > (guint32)Event_first
             && (guint32)pevent->type() < (guint32)Event_last){
         switch(pevent->type()){
-        case Event::Type::GstStreamPort:
+        case EventType::GstStreamPort:
         {
             getSocketRef().write("Opened port:"+getRelevanceRef().arguments.at("port"));
             getSocketRef().setFinished(true);
             end();
             break;
         }
-        case Event::Type::GstStreamFile:
+        case EventType::GstStreamFile:
         {
             getSocketRef().write("Writing file:"+getRelevanceRef().arguments.at("filepath"));
             Patch patch(this);

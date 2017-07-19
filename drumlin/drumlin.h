@@ -1,11 +1,9 @@
-#ifndef PLEG_H
-#define PLEG_H
+#ifndef DRUMLIN_H
+#define DRUMLIN_H
 
 #include <iostream>
 #include <cstdio>
 using namespace std;
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/string_generator.hpp>
 #include <boost/any.hpp>
 #include <boost/asio.hpp>
 #include <boost/mpl/vector.hpp>
@@ -17,6 +15,9 @@ using namespace std;
 using namespace boost;
 #include "logger.h"
 using namespace drumlin;
+
+#define Debug() drumlin::logger(std::cerr)
+#define Critical() drumlin::logger(std::cerr) << "********"
 
 typedef mpl::vector<bool, short, unsigned short, int, unsigned int, long, unsigned long, long long, unsigned long long, float, double, long double, std::string> value_types;
 struct stream_operator_impl {
@@ -33,6 +34,8 @@ private:
     const boost::any& p;
 };
 extern logger& operator<< (logger& strm, const boost::any& p);
+
+namespace drumlin {
 
 class string_list : public vector<string>
 {
@@ -60,21 +63,6 @@ extern string_list & operator<< (string_list&,const char* str);
 extern string_list & operator<< (string_list&,string & str);
 extern string_list & operator<< (string_list&,char* str);
 
-namespace Pleg
-{
-    class Server;
+} // namespace drumlin
 
-    extern boost::uuids::nil_generator nil_gen;
-    extern boost::uuids::string_generator string_gen;
-
-    extern int retval;
-    extern const char *nullstr;
-
-    extern Server *main_server;
-    //FIXME
-}
-
-#define Debug() drumlin::logger(std::cerr)
-#define Critical() drumlin::logger(std::cerr) << "********"
-
-#endif // PLEG_H
+#endif // DRUMLIN_H

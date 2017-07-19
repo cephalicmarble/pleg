@@ -190,13 +190,13 @@ void GStreamerSampleSource::writeToFile(Request *req,string rpath)
         if(gst->getJobs().end() != std::find_if(gst->getJobs().begin(),gst->getJobs().end(),[rel](GStreamer::GStreamer::jobs_type::value_type const& job){
             return job.first == (rel.getSourceName()+".file");
         })) { already = true; break; }
-        make_pod_event(Event::Type::GstStreamFile,"openFileSink",req)->send(thread);
+        make_pod_event(EventType::GstStreamFile,"openFileSink",req)->send(thread);
         break;
     }
     rel.setSourceName(rel.getSourceName()+".file");
     Files::files.add(rel,rpath);
     if(already)
-        make_event(Event::Type::GstStreamFile,"open")->send(req->getThread());
+        make_event(EventType::GstStreamFile,"open")->send(req->getThread());
 }
 
 void GStreamerSampleSource::getStatus(json::value *status)
@@ -288,3 +288,7 @@ void getStatus(json::value *status)
 } // namespace Source
 
 } // namespace Pleg
+
+namespace drumlin {
+template class Registry<Pleg::Sources::Source>;
+}

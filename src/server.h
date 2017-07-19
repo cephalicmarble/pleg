@@ -23,6 +23,7 @@ using namespace drumlin;
 #include "request.h"
 #include "response.h"
 #include "log.h"
+#include "plegapp.h"
 
 namespace Pleg {
 
@@ -38,11 +39,11 @@ namespace GStreamer {
 class Server :
     public Application<PlegApplication>,
     public StatusReporter,
-    public AsioServer<Request>
+    public AsioServer<Server,Request>
 {
 public:
     typedef Application<PlegApplication> ApplicationBase;
-    typedef AsioServer<Request> ServerBase;
+    typedef AsioServer<Server,Request> ServerBase;
     /**
      * @brief routes_type : vector of UriParseFunc instances
      */

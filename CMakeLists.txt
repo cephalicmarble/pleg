@@ -3,7 +3,7 @@ project(pleg)
 set(TARGET pleg)
 add_compile_options(-g -W -Wall -Wextra -pedantic -DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 cmake_minimum_required(VERSION 3.6)
-add_executable(${TARGET} main.cpp)
+add_executable(${TARGET} src/main.cpp)
 target_compile_definitions(${TARGET} PRIVATE -DDEBUGHEAP)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -27,6 +27,7 @@ target_link_libraries(${TARGET} "-lunwind -lpthread -lgstbase-1.0 -lgstapp-1.0 -
 
 FILE(STRINGS "pleg.files" PLEG_FILES)
 foreach(FILE ${PLEG_FILES})
+	message(${FILE})
 	target_sources(${TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/${FILE})
 	set(SOURCE_FILES "${SOURCE_FILES} ${CMAKE_SOURCE_DIR}/${FILE}")
 endforeach()

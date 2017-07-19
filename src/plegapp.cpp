@@ -1,5 +1,5 @@
 #include "plegapp.h"
-
+#include "server.h"
 #include "thread.h"
 using namespace drumlin;
 #include <boost/regex.hpp>
@@ -50,7 +50,12 @@ bool PlegApplication::event(Event *pevent)
 {
     do{
         switch(pevent->type()){
-//        case Event::Type::BluetoothStartThread:
+        case ApplicationShutdown:
+        {
+            if(main_server)main_server->writeLog();
+            break;
+        }
+//        case EventType::BluetoothStartThread:
 //        {
 //            string mac(pod_event_cast<string>(pevent)->getVal());
 //            string task = string("source:")+mac;
@@ -59,7 +64,7 @@ bool PlegApplication::event(Event *pevent)
 //                this_thread::yield();
 //            regex rx("([a-fA-F0-9]{2}:?){6}");
 //            if(regex_match(mac,rx) || mac == "mock" || mac == "all")
-//                make_pod_event(Event::Type::BluetoothConnectDevices,"connectDevices",mac)->send(worker->getThread());
+//                make_pod_event(EventType::BluetoothConnectDevices,"connectDevices",mac)->send(worker->getThread());
 //            break;
 //        }
         default:
@@ -72,4 +77,8 @@ bool PlegApplication::event(Event *pevent)
 
 } // namespace Pleg
 
-Application<Pleg::PlegApplication> *app;
+namespace drumlin {
+template class Application<Pleg::PlegApplication>;
+}
+
+drumlin::Application<Pleg::PlegApplication> *app;

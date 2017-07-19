@@ -14,7 +14,7 @@ namespace Transforms {
  */
 void Transform::error(const char*string)
 {
-    (new Event(Event::Type::TransformError,string))->punt();
+    (new Event(EventType::TransformError,string))->punt();
 }
 
 void Passthrough::run(Object *,Event *)

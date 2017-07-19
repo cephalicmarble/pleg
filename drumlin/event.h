@@ -1,7 +1,7 @@
-#ifndef ERROR_H
-#define ERROR_H
+#ifndef EVENT_H
+#define EVENT_H
 
-#include <pleg.h>
+#include <drumlin.h>
 #include <string>
 #include <functional>
 using namespace std;
@@ -10,8 +10,25 @@ using namespace std;
 #include "object.h"
 #include "thread.h"
 #include "exception.h"
-#include "application.h"
-using namespace drumlin;
+#include "iapplication.h"
+
+#define DrumlinEventTypes (\
+    DrumlinEventNone,\
+    DrumlinEventEvent_first,\
+    DrumlinEventThread_first,\
+    DrumlinEventThreadWork,\
+    DrumlinEventThreadWarning,\
+    DrumlinEventThreadShutdown,\
+    DrumlinEventThreadRemove,\
+    DrumlinEventThread_last,\
+\
+    DrumlinEventApplicationClose,\
+    DrumlinEventApplicationThreadsGone,\
+    DrumlinEventApplicationShutdown,\
+    DrumlinEventApplicationRestart,\
+    DrumlinEventEvent_last\
+)
+ENUM(DrumlinEventType,DrumlinEventTypes)
 
 namespace drumlin {
 
@@ -27,11 +44,11 @@ void setQuietEvents(bool keepQuiet);
 class Event
 {
 public:
-    typedef EventType Type;
+    typedef guint32 Type;
 public:
     /**
      * @brief type
-     * @return Event::Type
+     * @return DrumlinEventType
      */
     virtual Type type()const{ return m_type; }
     /**
@@ -42,10 +59,10 @@ public:
     /**
      * @brief Event : empty constructor
      */
-    Event():m_type(Event::Type::None),m_string("none"){}
+    Event():m_type(0),m_string("none"){}
     /**
      * @brief Event : only meaningful constructor
-     * @param _type Event::Type
+     * @param _type DrumlinEventType
      * @param _string const char*
      */
     Event(Type _type,string _string):m_type(_type),m_string(_string){}
@@ -90,7 +107,7 @@ public:
     }
     /**
      * @brief ThreadEvent : only constructor
-     * @param _type Event::Type
+     * @param _type DrumlinEventType
      * @param _error const char*
      * @param _thread Thread*
      * @param _pointer void*
@@ -158,7 +175,7 @@ ThreadEvent<T> *event_cast(const Event *event,T **out = 0)
 
 /**
  * @brief event_cast : used to stash something in an event for sending to eventFilter
- * @param _type Event::Type
+ * @param _type DrumlinEventType
  * @param error const char*
  * @param that T*
  */
@@ -166,17 +183,12 @@ template <const char>
 const ThreadEvent<const char> *make_event(Event::Type _type,const char *error,const char *that = 0)
 {
     ThreadEvent<const char> *event(new ThreadEvent<const char>(_type,error,that));
-    if(that && ((gint64)that > 10 || (gint64)that < 0)){
-        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error << "holds" << that;
-    }else{
-        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error;
-    }
     return event;
 }
 
 /**
  * @brief event_cast : used to stash something in an event for sending to eventFilter
- * @param _type Event::Type
+ * @param _type DrumlinEventType
  * @param error const char*
  * @param that T*
  */
@@ -184,11 +196,6 @@ template <class T = Object>
 const ThreadEvent<T> *make_event(Event::Type _type,const char *error,T *that = 0)
 {
     ThreadEvent<T> *event(new ThreadEvent<T>(_type,error,that));
-    if(that && ((gint64)that > 10 || (gint64)that < 0)){
-        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error << "holds" << that;
-    }else{
-        quietDebug() << event << metaEnum<Event::Type>().toString(event->type()) << "from" << this_thread::get_id() << "***" << error;
-    }
     return event;
 }
 
@@ -204,7 +211,7 @@ public:
     }
     /**
      * @brief ThreadEvent : only constructor
-     * @param _type Event::Type
+     * @param _type DrumlinEventType
      * @param _error const char*
      * @param _thread Thread*
      * @param _payload T
@@ -215,7 +222,7 @@ public:
 
     /**
      * @brief ThreadEvent : only constructor
-     * @param _type Event::Type
+     * @param _type DrumlinEventType
      * @param _error const char*
      * @param _thread Thread*
      * @param _payload T
@@ -239,7 +246,7 @@ private:
 
 /**
  * @brief event_cast : used to stash something in an event for sending to eventFilter
- * @param _type Event::Type
+ * @param _type DrumlinEventType
  * @param error const char*
  * @param that T*
  */
@@ -247,7 +254,6 @@ template <class T>
 const PodEvent<T> *make_pod_event(Event::Type _type,const char *error,T that)
 {
     PodEvent<T> *event(new PodEvent<T>(_type,error,that));
-    quietDebug() << event << event->type() << "from" << this_thread::get_id() << "***" << error << "holds" << &event->getVal();
     return event;
 }
 

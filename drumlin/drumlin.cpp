@@ -1,6 +1,8 @@
-#include "pleg.h"
+#include "drumlin.h"
 
 #include <boost/algorithm/string.hpp>
+
+namespace drumlin {
 
 logger& operator<< (logger& strm, const boost::any& p)
 {
@@ -66,10 +68,5 @@ string_list &string_list::operator=(string_list const& rhs)
     std::copy(rhs.begin(),rhs.end(),back_inserter(*this));
     return *this;
 }
-
-namespace Pleg {
-
-boost::uuids::nil_generator nil_gen;
-boost::uuids::string_generator string_gen;
 
 }

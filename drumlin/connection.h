@@ -100,9 +100,11 @@ private:
 };
 
 template <
+        class Server,
         class Connection,
         class Address = asio::ip::address_v4,
-        class Protocol = asio::ip::tcp>
+        class Protocol = asio::ip::tcp
+        >
 class AsioServer
 {
 public:
@@ -112,14 +114,14 @@ public:
     typedef typename Protocol::socket socket_type;
     typedef typename Protocol::acceptor acceptor_type;
     typedef typename Protocol::resolver resolver_type;
-    typedef AsioServer<connection_type,address_type,Protocol> server_type;
+    typedef AsioServer<Server,connection_type,address_type,Protocol> server_type;
     AsioServer(string host,int port):m_addr(),m_endpoint(host.length()?m_addr.from_string(host):m_addr.any(),port),m_acceptor(acceptor_type(drumlin::io_service,m_endpoint))
     {
     }
     void start()
     {
         m_acceptor.listen(10);
-        connection_type *new_connection = new connection_type(dynamic_cast<Pleg::Server*>(this));
+        connection_type *new_connection = new connection_type(dynamic_cast<Server*>(this));
 //        m_acceptor.accept(new_connection->socket().socket());
 //        cout << new_connection->socket().socket().available() << endl;
 //        new_connection->socket().socket().send(asio::buffer(string("BLARGLE")));

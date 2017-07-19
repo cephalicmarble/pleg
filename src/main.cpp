@@ -82,12 +82,13 @@ namespace po = boost::program_options;
 #include "application.h"
 #include "connection.h"
 using namespace drumlin;
+#include "pleg.h"
+using namespace Pleg;
 
 const char *nullstr = "";
 namespace Pleg {
 Server *main_server;
 }
-using namespace Pleg;
 /**
  * @brief main loop of Server
  * @param argc int
@@ -158,14 +159,14 @@ int main(int argc, char *argv[])
 //            ThreadWorker *worker = app->startBluetooth("sources");
 //            while(!worker->getThread()->isStarted())
 //                this_thread::yield();
-//            make_pod_event(Event::Type::BluetoothConnectDevices,"connectDevices",sz_all)->send(worker->getThread());
+//            make_pod_event(EventType::BluetoothConnectDevices,"connectDevices",sz_all)->send(worker->getThread());
 //        }
 
         if(vm.count("gstreamer")){
             ThreadWorker *worker = app->startGStreamer("gstreamer");
             while(!worker->getThread()->isStarted())
                 this_thread::yield();
-            make_pod_event(Event::Type::GstConnectDevices,"connectPipes",sz_all)->send(worker->getThread());
+            make_pod_event(EventType::GstConnectDevices,"connectPipes",sz_all)->send(worker->getThread());
         }
 
         server.start();

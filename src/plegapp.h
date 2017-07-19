@@ -6,10 +6,24 @@
 using namespace drumlin;
 
 /**
- * @brief The Type enum from QEvent::Type::User to QEvent::Type::MaxUser
+ * @brief The Type enum from QEventType::User to QEventType::MaxUser
  */
-#define EventTypes (None,\
+#define EventTypes (\
+    None,\
     Event_first,\
+    Thread_first,\
+    ThreadWork,\
+    ThreadWarning,\
+    ThreadShutdown,\
+    ThreadRemove,\
+    Thread_last,\
+\
+    ApplicationClose,\
+    ApplicationThreadsGone,\
+    ApplicationShutdown,\
+    ApplicationRestart,\
+    DrumlinEvent_last,\
+\
     Request_first,\
     Request_close,\
     RequestResponse,\
@@ -35,30 +49,11 @@ using namespace drumlin;
     GstRemoveJob,\
     Gst_last,\
 \
-    Control_first,\
-    ControlTest,\
-    ControlStartStream,\
-    ControlStreamStarted,\
-    ControlOutputFrame,\
-    Control_last,\
-\
     Transform_first,\
     TransformError,\
     Transform_last,\
 \
     TracerBlock,\
-\
-    Thread_first,\
-    ThreadWork,\
-    ThreadWarning,\
-    ThreadShutdown,\
-    ThreadRemove,\
-    Thread_last,\
-\
-    ApplicationClose,\
-    ApplicationThreadsGone,\
-    ApplicationShutdown,\
-    ApplicationRestart,\
 \
     Event_last\
 )

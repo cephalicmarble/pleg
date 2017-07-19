@@ -1,6 +1,5 @@
 #include "exception.h"
-#include <pleg.h>
-using namespace Pleg;
+#include <drumlin.h>
 
 namespace drumlin {
 
