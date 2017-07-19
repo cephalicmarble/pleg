@@ -1,0 +1,18 @@
+[ ] - gmrender into pleg repo
+[ ] - patch mechanism
+[ ] - filemagic and proper gst handling
+[ ] - update the systemd
+[ ] - seek
+[ ] - second upnp endpoint for streaming
+[ ] - webapp tab sheet for multiple plegs
+[ ] - gmrender route (or ansible)
+[ ] - gmrender-mkII receipt of stream as in-pleg pipeline
+[ ] - ushare as example dnla service into pleg
+
+[ ] - ambient link to pleg chart via webapp (gnuradio)
+[ ] - atmospheric link to pleg chart via webapp (gnuradio)
+[ ] - pleg to pleg mendication (sync,checkpoint)
+[ ] - pleg to disk, via gak police (gnuradio)
+
+[ ] - pleg transforms to monitor
+[ ] - offer transform via dnla
