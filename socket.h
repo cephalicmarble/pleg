@@ -151,6 +151,9 @@ public:
     {
         READLOCK
         WRITELOCK
+        m_connection = nullptr;
+        handler = nullptr;
+        m_sock_type->close();
         writeBuffers.erase(std::remove_if(writeBuffers.begin(),writeBuffers.end(),[](auto &){return true;}),writeBuffers.end());
         readBuffers.erase(std::remove_if(readBuffers.begin(),readBuffers.end(),[](auto &){return true;}),readBuffers.end());
     }

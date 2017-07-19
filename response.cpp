@@ -697,6 +697,7 @@ void Patch::_disconnect()
 
 void Patch::_openPipe()
 {
+    getRequest()->delayed = true;
     threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
     if(0==distance(threads.begin(),threads.end())){
         threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getThread());

@@ -55,7 +55,7 @@ public:
     }
     string const& getName()const { return name; }
     void setMemory(size_t _memory){ memory = _memory; }
-
+    virtual void getStatus(json::value *status);
     /**
      * @brief Source::writeNextValue
      * @param bytes void*
@@ -321,6 +321,7 @@ public:
     void writeToFile(Request *,string rpath);
     void writeNext(void *mem,guint32 len);
     GStreamer::GStreamerSrc const& getSrc()const{ return src; }
+    void getStatus(json::value *status);
 protected:
     void writeNextSample(GstSample *sample);
     GStreamer::GStreamerSrc src;
@@ -343,6 +344,7 @@ public:
     virtual uuids::uuid getUuid();
     void writeNext(void *mem,guint32 len);
     GStreamer::GStreamerStreamSource const& getSrc()const{ return src; }
+    void getStatus(json::value *status);
 protected:
     virtual void writeNextSample(GstSample *sample);
     GStreamer::GStreamerStreamSource src;

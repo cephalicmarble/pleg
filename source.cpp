@@ -46,6 +46,11 @@ void Source::writeToFile(Request *req,string rpath)
     Files::files.add(req->getRelevanceRef(),rpath);
 }
 
+void Source::getStatus(json::value *status)
+{
+    status->get_object().insert({"actions","chart,record"});
+}
+
 void WorkSource::report(json::value *obj,ReportType type)const
 {
     obj->get_object().insert({"ticks",tick});
@@ -194,6 +199,11 @@ void GStreamerSampleSource::writeToFile(Request *req,string rpath)
         make_event(Event::Type::GstStreamFile,"open")->send(req->getThread());
 }
 
+void GStreamerSampleSource::getStatus(json::value *status)
+{
+    status->get_object().insert({"actions","view,record"});
+}
+
 GStreamerOffsetSource::GStreamerOffsetSource(GStreamer::GStreamer *gst,std::string _name)
     :GStreamerSourceBase(_name),src(gst,_name)
 {
@@ -251,6 +261,11 @@ void GStreamerOffsetSource::writeNext(void *mem,guint32 len)
     Cache(CPS_call_void(Buffers::addSourceBuffer,const_cast<const Buffers::SourceBuffer*>(buf)));
 }
 
+void GStreamerOffsetSource::getStatus(json::value *status)
+{
+    status->get_object().insert({"actions","chart,record"});
+}
+
 sources_type sources;
 
 void getStatus(json::value *status)
@@ -264,11 +279,7 @@ void getStatus(json::value *status)
             { "index", index++ },
             { "type", metaEnum<Source::Type>().toString(source.second->type) },
         } };
-        if(dynamic_cast<GStreamerSampleSource*>(source.second)){
-            obj.get_object().insert({"actions","view,record"});
-        }else{
-            obj.get_object().insert({"actions","chart,record"});
-        }
+        source.second->getStatus(&obj);
         array_sources.get_array().push_back(obj);
     }
     status->get_object().insert({"sources",array_sources});

@@ -844,7 +844,12 @@ bool GStreamer::event(Event *pevent)
             if(!isDeleting()){
                 LOCK;
                 lock_guard<recursive_mutex> l2(getThread()->m_critical_section);
-                m_jobs.remove(pod_event_cast<std::string>(pevent)->getVal().c_str());
+                string name = pod_event_cast<std::string>(pevent)->getVal().c_str();
+                Sources::Source *source = m_jobs.fromString<Sources::Source>(name);
+                if(source){
+                    m_jobs.remove(name,true);
+                    Sources::sources.remove(name);
+                }
             }
             break;
         }

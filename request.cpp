@@ -182,8 +182,10 @@ bool Request::reply(Socket *) {
     }
     if(!delayed){
         end();
+        return true;
+    }else{
+        return false;
     }
-    return true;
 }
 
 /**
@@ -260,6 +262,7 @@ bool Request::event(Event *pevent)
         case Event::Type::GstStreamPort:
         {
             getSocketRef().write("Opened port:"+getRelevanceRef().arguments.at("port"));
+            getSocketRef().setFinished(true);
             end();
             break;
         }
@@ -268,6 +271,7 @@ bool Request::event(Event *pevent)
             getSocketRef().write("Writing file:"+getRelevanceRef().arguments.at("filepath"));
             Patch patch(this);
             patch._status();
+            getSocketRef().setFinished(true);
             end();
             break;
         }
