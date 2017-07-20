@@ -39,6 +39,8 @@ class Event;
 class Server;
 
 class StatusReporter {
+public:
+    virtual ~StatusReporter(){}
     virtual void getStatus(json::value *status)const=0;
 };
 

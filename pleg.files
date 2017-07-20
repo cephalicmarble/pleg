@@ -68,4 +68,5 @@ drumlin/connection.h
 drumlin/connection.cpp
 drumlin/drumlin.h
 drumlin/drumlin.cpp
-drumlin/iapplication.h
+drumlin/applicationbase.h
+drumlin/applicationbase.cpp

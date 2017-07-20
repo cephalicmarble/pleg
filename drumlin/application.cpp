@@ -6,6 +6,6 @@ using namespace boost;
 
 namespace drumlin {
 
-IApplication *iapp;
+ApplicationBase *iapp;
 
 } // namespace drumlin

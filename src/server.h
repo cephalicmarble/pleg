@@ -38,7 +38,6 @@ namespace GStreamer {
  */
 class Server :
     public Application<PlegApplication>,
-    public StatusReporter,
     public AsioServer<Server,Request>
 {
 public:

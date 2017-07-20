@@ -77,7 +77,16 @@ public:
      * @brief remove : remove a string Source* mapping, delete the Source
      * @param str
      */
-    void remove(const string &str,bool noDelete = false);
+    void remove(const string &str,bool noDelete = false)
+    {
+        lock_guard<recursive_mutex> l(mutex);
+        typename map_type::iterator it(map->find(str));
+        if(it!=map->end()){
+            if(!noDelete)
+                delete (*it).second;
+            map->erase(it);
+        }
+    }
 
     /**
      * @brief removeAll : remove a string Source* mapping, delete the Source

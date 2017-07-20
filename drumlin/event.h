@@ -10,7 +10,7 @@ using namespace std;
 #include "object.h"
 #include "thread.h"
 #include "exception.h"
-#include "iapplication.h"
+#include "applicationbase.h"
 
 #define DrumlinEventTypes (\
     DrumlinEventNone,\

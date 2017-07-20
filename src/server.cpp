@@ -100,7 +100,7 @@ std::vector<Route<Catch>> const& Server::getRoutes<Catch>()const{ return catch_r
 void Server::start()
 {
     Log() << "Started Server";
-    lock_guard<boost::mutex> l(app->m_critical_section);
+    lock_guard<boost::mutex> l(drumlin::iapp->m_critical_section);
     defineRoutes();
     ServerBase::start();
 }
@@ -137,7 +137,7 @@ void Server::getStatus(json::value *status)const
 {
     ApplicationBase::getStatus(status);
     {
-        lock_guard<boost::mutex> l(m_critical_section); //Server inherits Application<T>
+        lock_guard<boost::mutex> l(const_cast<boost::mutex&>(m_critical_section)); //Server inherits Application<T>
 
         json::value requests(json::empty_array);
         json::array_t &threads(status->get_object().at("threads").get_array());

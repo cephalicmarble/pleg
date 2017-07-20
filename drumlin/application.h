@@ -9,7 +9,7 @@ using namespace tao;
 #include <boost/thread/lock_guard.hpp>
 #include <boost/thread.hpp>
 using namespace boost;
-#include "iapplication.h"
+#include "applicationbase.h"
 #include "thread.h"
 #include "event.h"
 #include "cursor.h"
@@ -19,11 +19,9 @@ using namespace boost;
 
 namespace drumlin {
 
-typedef std::vector<Thread*> threads_type;
-
 class Terminator;
 
-extern IApplication *iapp;
+extern ApplicationBase *iapp;
 
 #define THREADSLOCK lock_guard<mutex> l(const_cast<mutex&>(m_critical_section));
 
@@ -51,20 +49,17 @@ template <class DrumlinApplication = Object>
 class Application :
         public DrumlinApplication,
         public SignalHandler,
-        public IApplication
+        public ApplicationBase
 {
 public:
     typedef DrumlinApplication Base;
-    typedef Registry<ThreadWorker> threads_reg_type;
 
-    Application():DrumlinApplication(0,nullptr),SignalHandler(){}
-    Application(int &argc,char **argv):DrumlinApplication(argc,argv),SignalHandler(){}
+    Application():DrumlinApplication(0,nullptr){}
+    Application(int &argc,char **argv):DrumlinApplication(argc,argv){}
     ~Application()
     {
         threads.reset(new threads_reg_type());
     }
-
-    mutex m_critical_section;
 
     /**
      * @brief Application<T>::addThread : optionally start a thread as it is added
@@ -247,25 +242,6 @@ public:
         Debug() << "Terminating...";
         terminator = new Terminator(restarting);
     }
-    /**
-     * @brief Server::getStatus : return a list.join("\n") of running threads
-     * @return const char*
-     */
-    virtual void getStatus(json::value *status)const
-    {
-        THREADSLOCK
-        json::value array(json::empty_array);
-        for(threads_reg_type::value_type const& thread : *threads){
-            json::value obj(json::empty_object);
-            Thread *_thread(thread.second->getThread());
-            if(!_thread->isStarted() || _thread->isTerminated())
-                continue;
-            thread.second->writeToObject(&obj);//report the thread
-            array.get_array().push_back(obj);
-            thread.second->getStatus(status);//report sub-system
-        }
-        status->get_object().insert({"threads",array});
-    }
     bool handleSignal(int signal)
     {
         if(Tracer::tracer!=nullptr){
@@ -278,7 +254,6 @@ protected:
     Terminator *terminator = nullptr;
 private:
     bool terminated = false;
-    std::unique_ptr<threads_reg_type> threads;
     boost::concurrent::sync_queue<Event*> m_queue;
 };
 

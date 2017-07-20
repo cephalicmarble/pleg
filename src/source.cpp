@@ -10,6 +10,7 @@ using namespace boost;
 #include "request.h"
 #include "files.h"
 #include "jsonconfig.h"
+#include "application.h"
 #include <math.h>
 
 namespace Pleg {
