@@ -3,8 +3,8 @@ using namespace Pleg;
 #include <tao/json.hpp>
 using namespace tao;
 #include <functional>
+#include <mutex>
 using namespace std;
-#include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
 #include "gstreamer.h"
@@ -14,6 +14,7 @@ using namespace boost;
 #include "cursor.h"
 #include "source.h"
 #include "request.h"
+#include "mutexcall.h"
 using namespace drumlin;
 
 /* Many thanks for the much-edited cap_gstreamer.cpp example, opencv (cephalicmarble@hotmail.com) */
@@ -24,7 +25,7 @@ namespace GStreamer {
 
 void toFraction(double decimal, double &numerator, double &denominator);
 
-boost::mutex gst_initializer::gst_initializer_mutex;
+std::mutex gst_initializer::gst_initializer_mutex;
 
 #define GST_REASONABLE_WAIT (0.4 * 1000000000.)
 
@@ -49,8 +50,8 @@ void toFraction(double decimal, double &numerator, double &denominator)
     numerator = denominator * decimal;
 }
 
-boost::mutex bus_mutex;
-#define BUSLOCK lock_guard<boost::mutex> lb(bus_mutex)
+std::mutex bus_mutex;
+#define BUSLOCK std::lock_guard<std::mutex> lb(bus_mutex)
 
 gboolean bus_func(GstBus * bus, GstMessage * msg, gpointer user_data)
 {
@@ -68,8 +69,8 @@ GStreamerPipe::GStreamerPipe(GStreamer *gst,string _name):WorkObject(),gstreamer
     caps = 0;
 }
 
-recursive_mutex mutex;
-#define LOCK lock_guard<recursive_mutex> l(mutex)
+std::recursive_mutex mutex;
+#define LOCK std::lock_guard<std::recursive_mutex> l(mutex)
 
 GStreamerPipe::~GStreamerPipe()
 {
@@ -129,9 +130,11 @@ gboolean GStreamerPipe::handleMessage(GstBus *, GstMessage *msg)
             gst_message_parse_stream_status(msg,&tp,&elem);
             Debug() << "stream status: elem" << GST_ELEMENT_NAME(elem) << metaEnum<PipelineState>().toString((PipelineState)tp);
             break;
+#if GST_VERSION_MAJOR > 0
         case GST_MESSAGE_STREAM_START:
             gst_element_set_state(GST_ELEMENT(pipeline), GST_STATE_PLAYING);
             break;
+#endif
         default:
             Debug() << "unhandled message" << GST_MESSAGE_TYPE_NAME(msg);
             return false;
@@ -284,10 +287,16 @@ bool GStreamerPipe::open( std::string filename )
 
     while (!done)
     {
+#if GST_VERSION_MAJOR > 0
         switch (gst_iterator_next (it, &value))
         {
         case GST_ITERATOR_OK:
             _element = GST_ELEMENT (g_value_get_object (&value));
+#else
+        switch(gst_iterator_next (it, (gpointer*)&_element))
+        {
+        case GST_ITERATOR_OK:
+#endif
             name = gst_element_get_name(_element);
             if (name.length())
             {
@@ -323,7 +332,11 @@ bool GStreamerPipe::open( std::string filename )
     GstFormat format;
 
     format = GST_FORMAT_DEFAULT;
+#if GST_VERSION_MAJOR == 0
+    if(!gst_element_query_duration(element, &format, &duration))
+#else
     if(!gst_element_query_duration(element, format, &duration))
+#endif
     {
         Debug() << "GStreamer: unable to query duration of stream";
         duration = -1;
@@ -357,10 +370,14 @@ GStreamerSrc::GStreamerSrc(GStreamer *gst, string name):Object(0),GStreamerPipe(
     fps = -1;
     callbacks.eos = &eos_callback;
     callbacks.new_preroll = &new_preroll_callback;
+#if GST_VERSION_MAJOR == 0
+    callbacks.new_buffer = &new_sample_callback;
+#else
     callbacks.new_sample = &new_sample_callback;
+#endif
 }
 
-#define CALLBACK_LOCK static boost::mutex s_mutex;lock_guard<boost::mutex> l(s_mutex)
+#define CALLBACK_LOCK static std::mutex s_mutex;std::lock_guard<std::mutex> l(s_mutex)
 void eos_callback(GstAppSink *,gpointer user_data)
 {
     CALLBACK_LOCK;
@@ -438,6 +455,14 @@ bool GStreamerSrc::grabFrame()
     GstSample *sample = 0;
     gst_element_get_state(pipeline, &state, &pending, GST_REASONABLE_WAIT);
     do{
+#if GST_VERSION_MAJOR == 0
+        if(state != GST_STATE_PLAYING){
+            stateChange(GST_STATE_PLAYING);
+        }else{
+            if(!sample)
+                sample = gst_app_sink_pull_buffer(GST_APP_SINK(element));
+        }
+#else
         if(state != GST_STATE_PLAYING){
             if(!sample)
                sample = gst_app_sink_pull_preroll(GST_APP_SINK(element));
@@ -446,6 +471,7 @@ bool GStreamerSrc::grabFrame()
             if(!sample)
                 sample = gst_app_sink_pull_sample(GST_APP_SINK(element));
         }
+#endif
         gst_element_get_state(pipeline, &state, &pending, 0.4 * 1000000000.);
     }while(!sample || state != GST_STATE_PLAYING);
 
@@ -458,7 +484,11 @@ bool GStreamerSrc::grabFrame()
 
     if(!onlyOnce){
         GstPad* pad = gst_element_get_static_pad(element, "sink");
+#if GST_VERSION_MAJOR == 0
+        GstCaps* buffer_caps = gst_pad_get_caps(pad);
+#else
         GstCaps* buffer_caps = gst_pad_get_current_caps(pad);
+#endif
         const GstStructure *structure = gst_caps_get_structure (buffer_caps, 0);
 
         if (!gst_structure_get_int (structure, "width", &width))
@@ -479,6 +509,9 @@ bool GStreamerSrc::grabFrame()
 
         fps = ceil((double)num/(double)denom);
 
+#if GST_VERSION_MAJOR == 0
+        len = GST_BUFFER_SIZE(sample);
+#else
         buffer = gst_sample_get_buffer(sample);
         if(!buffer){
             gst_sample_unref(sample);
@@ -487,13 +520,18 @@ bool GStreamerSrc::grabFrame()
         len = gst_buffer_get_size(buffer);
 
         gst_buffer_unref(buffer);
+#endif
 
         onlyOnce = true;
     }
 
     getGStreamer()->nextSample(this,sample);
 
+#if GST_VERSION_MAJOR == 0
+    gst_buffer_unref(buffer);
+#else
     gst_sample_unref(sample);
+#endif
 
     return true;
 }
@@ -651,18 +689,28 @@ void GStreamerStreamSource::writeFrame( GstSample *sample )
     duration = ((double)1/fps) * GST_SECOND;
     timestamp = tick * duration;
 
+#if GST_VERSION_MAJOR == 0
+    GstBuffer *second = gst_buffer_try_new_and_alloc(GST_BUFFER_SIZE(sample));
+    if(!second){
+        Critical() << "Could not allocate new GstBuffer";
+    }
+    memcpy(GST_BUFFER_DATA(second),(guint8*)GST_BUFFER_DATA(sample), GST_BUFFER_SIZE(sample));
+    GST_BUFFER_DURATION(second) = duration;
+    GST_BUFFER_TIMESTAMP(second) = timestamp;
+#else
     //gst_app_src_push_buffer takes ownership of the buffer, so we need to supply it a copy
     GstBuffer *buffer = gst_sample_get_buffer(GST_SAMPLE(sample));
     if(!buffer){
         Debug() << "no buffer in sample";
         return;
     }
-    GST_BUFFER_DURATION(buffer) = duration;
-    GST_BUFFER_PTS(buffer) = timestamp;
-    GST_BUFFER_DTS(buffer) = timestamp;
-    //set the current number in the frame
-    GST_BUFFER_OFFSET(buffer) =  tick++;
     GstBuffer *second = gst_buffer_copy_deep(buffer);
+    GST_BUFFER_DURATION(second) = duration;
+    GST_BUFFER_PTS(second) = timestamp;
+    GST_BUFFER_DTS(second) = timestamp;
+#endif
+    //set the current number in the frame
+    GST_BUFFER_OFFSET(second) =  tick++;
     ret = GST_FLOW_ERROR;
     if(GST_IS_BUFFER(second)){
         ret = gst_app_src_push_buffer(GST_APP_SRC(element), second);
@@ -735,7 +783,11 @@ void GStreamerStreamSource::start()
         handleMessages();
         return;
     }
+#if GST_VERSION_MAJOR == 0
+    GstCaps *caps = gst_pad_get_caps(source_pad);
+#else
     GstCaps *caps = gst_pad_get_current_caps(source_pad);
+#endif
     gst_app_src_set_caps(GST_APP_SRC(element),caps);
 
     going = true;
@@ -759,7 +811,7 @@ void GStreamer::nextSample(GStreamerSrc *that,GstSample *sample)
             connection.second->writeNextSample(sample);
         }
     }
-    this_thread::yield();
+    boost::this_thread::yield();
 }
 
 /**
@@ -770,9 +822,7 @@ void GStreamer::shutdown()
     LOCK;
     Debug() << this << __func__;
     connections.clear();
-    for(jobs_type::value_type const& obj : m_jobs){
-        obj.second->stop();
-    }
+    m_jobs.removeAll();
     signalTermination();
 }
 
@@ -843,12 +893,11 @@ bool GStreamer::event(Event *pevent)
         {
             if(!isDeleting()){
                 LOCK;
-                lock_guard<recursive_mutex> l2(getThread()->m_critical_section);
+                std::lock_guard<std::recursive_mutex> l2(getThread()->m_critical_section);
                 string name = pod_event_cast<std::string>(pevent)->getVal().c_str();
                 Sources::Source *source = m_jobs.fromString<Sources::Source>(name);
                 if(source){
-                    m_jobs.remove(name,true);
-                    Sources::sources.remove(name);
+                    m_jobs.remove(name);
                 }
             }
             break;
@@ -890,7 +939,7 @@ Sources::GStreamerSampleSource *GStreamer::addPipeline(std::string pipeline,std:
     m_jobs.add(name,source);
     source->src.grabFrame();           //preroll / alloc
     source->src.start();
-    Sources::sources.add(name,source); //register
+    source->setMemory(Allocator(CPS_call_void(Buffers::registerSource,dynamic_cast<Sources::Source*>(source))));
     connections.insert({&source->src,source});
     Debug() << source << "added.";
     return source;
@@ -901,7 +950,7 @@ Sources::GStreamerOffsetSource *GStreamer::addStream(Relevance::arguments_type c
     LOCK;
     string _source(args.at("source"));
     Sources::GStreamerSampleSource *source(
-        Sources::sources.fromString<Sources::GStreamerSampleSource>(_source));
+        m_jobs.fromString<Sources::GStreamerSampleSource>(_source));
     if(!source)
         return nullptr;
     Sources::GStreamerOffsetSource *offset = new Sources::GStreamerOffsetSource(this,name);
@@ -913,6 +962,7 @@ Sources::GStreamerOffsetSource *GStreamer::addStream(Relevance::arguments_type c
     }
     m_jobs.add(name,offset);
     offset->src.start();
+    source->setMemory(Allocator(CPS_call_void(Buffers::registerSource,dynamic_cast<Sources::Source*>(source))));
     connections.insert({&source->src,offset});
     Debug() << offset << "added.";
     return offset;

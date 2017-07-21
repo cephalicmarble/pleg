@@ -18,8 +18,8 @@ class FileWriter;
 class Files;
 void getStatus(json::value *status);
 
-extern recursive_mutex files_mutex;
-#define FILESLOCK  lock_guard<recursive_mutex> l(files_mutex)
+extern std::recursive_mutex files_mutex;
+#define FILESLOCK  std::lock_guard<std::recursive_mutex> l(const_cast<std::recursive_mutex&>(files_mutex))
 
 class RecordedRange
 {

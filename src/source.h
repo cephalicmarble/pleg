@@ -42,13 +42,13 @@ namespace Sources {
  * @brief The Source class : represents an abstract data source
  */
 class Source :
-    public Object
+    public WorkObject
 {
 public:
     typedef SourceType Type;
 
-    Source(std::string _name):Object(),name(_name){}
-    Source():Object(),name("source"){}
+    Source(std::string _name):name(_name){}
+    Source():name("source"){}
     virtual ~Source();
     virtual guint64 nextTick(){
         return ++tick;
@@ -74,6 +74,7 @@ public:
 
     operator const char*()const{ return name.c_str(); }
 
+    virtual void report(json::value *obj,ReportType type)const;
     virtual void writeToFile(Request *,string rpath);
 
     Type type;
@@ -82,14 +83,6 @@ protected:
     guint64 tick = 0;
     string name;
     guint64 memory;
-};
-
-class WorkSource : public Source, public WorkObject
-{
-public:
-    WorkSource(string _name):Source(_name){}
-    virtual void stop(){}
-    virtual void report(json::value *obj,ReportType type)const;
 };
 
 /**
@@ -216,8 +209,6 @@ public:
     virtual size_t getAlign(){ return alignof(T); }
 };
 
-#define REGISTRYLOCK lock_guard<recursive_mutex> l(mutex);
-
 class SourceRegistry :
     public Registry<Source>
 {
@@ -241,7 +232,7 @@ public:
     void remove(const string &str)
     {
         REGISTRYLOCK;
-        Allocator(CPS_call_void(Buffers::unregisterSource,map->at(str)));
+        Allocator(CPS_call_void(Buffers::unregisterSource,map.at(str)));
         Registry<Source>::remove(str);
     }
 
@@ -264,14 +255,26 @@ public:
 typedef SourceRegistry sources_type;
 extern sources_type sources;
 
+template <class T>
+T *fromString(string name)
+{
+    T *src(sources.fromString<T>(name));
+    if(src)
+        return src;
+    GStreamer::GStreamer *gst(GStreamer::GStreamer::getInstance());
+    src = gst->getJobs().fromString<T>(name);
+    if(src)
+        return src;
+    return nullptr;
+}
+
 void getStatus(json::value *status);
 
 /**
  * @brief The MockSource class : enumerates the alphabet into a buffer
  */
 class MockSource :
-    public BufferedSource<sizeof(guint64)>,
-    public WorkObject
+    public BufferedSource<sizeof(guint64)>
 {
     typedef BufferedSource<sizeof(guint64)> Base;
 public:
@@ -290,8 +293,7 @@ private:
 /**
  * @brief The NullSource class : does nothing.
  */
-class NullSource : public Source,
-        public WorkObject
+class NullSource : public Source
 {
 public:
     NullSource():Source("null"){ type = Source_Null; }
@@ -300,10 +302,10 @@ public:
     void stop(){}
 };
 
-class GStreamerSourceBase : public WorkSource
+class GStreamerSourceBase : public Source
 {
 public:
-    GStreamerSourceBase(std::string _name):WorkSource(_name){}
+    GStreamerSourceBase(std::string _name):Source(_name){}
     virtual void writeNextSample(GstSample *sample)=0;
 };
 
@@ -322,6 +324,7 @@ public:
     void writeNext(void *mem,guint32 len);
     GStreamer::GStreamerSrc const& getSrc()const{ return src; }
     void getStatus(json::value *status);
+    void stop(){ src.stop(); }
 protected:
     void writeNextSample(GstSample *sample);
     GStreamer::GStreamerSrc src;
@@ -343,6 +346,7 @@ public:
     virtual guint32 sizeT();
     virtual uuids::uuid getUuid();
     void writeNext(void *mem,guint32 len);
+    void stop(){ src.stop(); }
     GStreamer::GStreamerStreamSource const& getSrc()const{ return src; }
     void getStatus(json::value *status);
 protected:

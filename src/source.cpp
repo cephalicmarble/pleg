@@ -52,7 +52,7 @@ void Source::getStatus(json::value *status)
     status->get_object().insert({"actions","chart,record"});
 }
 
-void WorkSource::report(json::value *obj,ReportType type)const
+void Source::report(json::value *obj,ReportType type)const
 {
     obj->get_object().insert({"ticks",tick});
     if(type & WorkObject::ReportType::Memory){
@@ -121,6 +121,9 @@ void GStreamerSampleSource::writeNextSample(GstSample *sample)
 {
     if(!sample)
         return;
+#if GST_VERSION_MAJOR == 0
+    writeNext(GST_BUFFER_DATA(sample),GST_BUFFER_SIZE(sample));
+#else
     GstBuffer *buffer = gst_sample_get_buffer(GST_SAMPLE(sample));
     GstMapInfo info;
     if(!buffer)
@@ -129,6 +132,7 @@ void GStreamerSampleSource::writeNextSample(GstSample *sample)
         writeNext(info.data,info.size);
         gst_buffer_unmap(buffer,&info);
     }
+#endif
 }
 
 guint32 GStreamerSampleSource::lengthData()
@@ -271,10 +275,10 @@ sources_type sources;
 
 void getStatus(json::value *status)
 {
-    lock_guard<recursive_mutex> l(Sources::sources.mutex);
+    std::lock_guard<std::recursive_mutex> l(sources.mutex);
     json::value array_sources(json::empty_array);
     int index = 0;
-    for(Sources::sources_type::value_type const& source : Sources::sources){
+    for(Sources::sources_type::value_type const& source : sources){
         json::value obj{ {
             { "name", source.first },
             { "index", index++ },
@@ -283,13 +287,21 @@ void getStatus(json::value *status)
         source.second->getStatus(&obj);
         array_sources.get_array().push_back(obj);
     }
+    GStreamer::GStreamer *gst(GStreamer::GStreamer::getInstance());
+    for(ThreadWorker::jobs_type::value_type const& source : gst->getJobs()){
+        Sources::GStreamerSourceBase *gsrc(const_cast<Sources::GStreamerSourceBase*>(dynamic_cast<Sources::GStreamerSourceBase*>(source.second)));
+        json::value obj{ {
+            { "name", source.first },
+            { "index", index++ },
+            { "type", metaEnum<Source::Type>().toString(gsrc->type) },
+        } };
+        gsrc->getStatus(&obj);
+        array_sources.get_array().push_back(obj);
+    }
+
     status->get_object().insert({"sources",array_sources});
 }
 
 } // namespace Source
 
 } // namespace Pleg
-
-namespace drumlin {
-template class Registry<Pleg::Sources::Source>;
-}

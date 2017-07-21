@@ -1,10 +1,8 @@
 #ifndef MUTEXCALL_H
 #define MUTEXCALL_H
 
-#include <boost/thread.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-using namespace boost;
+#include <mutex>
+using namespace std;
 
 namespace drumlin {
 
@@ -38,7 +36,7 @@ struct mutex_call_1
 template <class Call>
 class Continuer
 {
-    recursive_mutex mutex;
+    std::recursive_mutex mutex;
 public:
     typedef typename Call::Return Param;
     /**
@@ -90,7 +88,7 @@ struct CPS {
         ret = func(klass,param);
         if(continuer){
             while(!continuer->tryLock())
-                this_thread::yield();
+                boost::this_thread::yield();
             continuer->accept(func,ret);
             continuer->unlock();
         }

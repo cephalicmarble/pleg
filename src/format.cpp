@@ -3,10 +3,10 @@ using namespace Pleg;
 #include "tao/json.hpp"
 using namespace tao;
 #include "format.h"
+#include <mutex>
+using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
@@ -20,7 +20,7 @@ namespace Pleg {
 
 namespace Files {
 
-recursive_mutex files_mutex;
+std::recursive_mutex files_mutex;
 
 RecordedRange::RecordedRange(Relevance const&rel,posix_time::ptime _start)
     :relevance(rel),start(_start),step(posix_time::milliseconds(0)),finish(start),ticks(0)
@@ -104,7 +104,7 @@ void Format::toJson(json::value *json)const
 
 RecordedRange *Format::newRecord(const Buffers::Buffer *buffer)
 {
-    lock_guard<recursive_mutex> l(files_mutex);
+    std::lock_guard<std::recursive_mutex> l(files_mutex);
     records.push_front(RecordedRange(buffer->getRelevanceRef(),buffer->getTimestampRef()));
     RecordedRange *range(&records.front());
     current_records.push_back(range);

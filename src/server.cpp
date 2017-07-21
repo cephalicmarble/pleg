@@ -7,10 +7,8 @@ using namespace tao;
 #include <sstream>
 #include <fstream>
 #include <algorithm>
+#include <mutex>
 using namespace std;
-#include <boost/thread/lock_guard.hpp>
-#include <boost/thread/mutex.hpp>
-using namespace boost;
 #include "exception.h"
 #include "request.h"
 #include "response.h"
@@ -23,8 +21,6 @@ using namespace boost;
 using namespace drumlin;
 
 namespace Pleg {
-
-recursive_mutex Server::mutex;
 
 /**
  * @brief Server::Server : only constructor
@@ -100,7 +96,7 @@ std::vector<Route<Catch>> const& Server::getRoutes<Catch>()const{ return catch_r
 void Server::start()
 {
     Log() << "Started Server";
-    lock_guard<boost::mutex> l(drumlin::iapp->m_critical_section);
+    std::lock_guard<std::mutex> l(drumlin::iapp->m_critical_section);
     defineRoutes();
     ServerBase::start();
 }
@@ -116,7 +112,7 @@ void Server::stop()
 
 void Server::writeLog()
 {
-    lock_guard<recursive_mutex> l(mutex);
+    std::lock_guard<std::recursive_mutex> l(mutex);
     ofstream logfile;
     logfile.open("./Server.log",ios_base::out|ios_base::app);
     if(logfile.is_open()){
@@ -137,7 +133,7 @@ void Server::getStatus(json::value *status)const
 {
     ApplicationBase::getStatus(status);
     {
-        lock_guard<boost::mutex> l(const_cast<boost::mutex&>(m_critical_section)); //Server inherits Application<T>
+        std::lock_guard<std::mutex> l(const_cast<std::mutex&>(m_critical_section)); //Server inherits Application<T>
 
         json::value requests(json::empty_array);
         json::array_t &threads(status->get_object().at("threads").get_array());

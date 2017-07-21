@@ -3,9 +3,6 @@
 
 #include "tao_forward.h"
 using namespace tao;
-#include <boost/thread.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/recursive_mutex.hpp>
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 using namespace boost;
 #include <list>
@@ -13,6 +10,7 @@ using namespace boost;
 #include <map>
 #include <memory>
 #include <utility>
+#include <mutex>
 using namespace std;
 #include "relevance.h"
 #include "mutexcall.h"
@@ -73,7 +71,7 @@ protected:
     heap_type heaps;
     int do_unregisterHeap(heap_type::value_type &pair);
 public:
-    recursive_mutex mutex;
+    std::recursive_mutex mutex;
     Allocator();
     ~Allocator();
     int registerSource(Sources::Source *source);
@@ -203,7 +201,7 @@ protected:
 protected:
     char *allocate(Sources::Source *source,size_t n = 1);
 public:
-    mutex m_mutex;
+    std::mutex m_mutex;
     BufferCache();
     ~BufferCache();
     bool isLocked();
@@ -250,7 +248,7 @@ template <class CPS>
 typename CPS::Return Allocator(CPS cps)
 {
     while(!Buffers::allocator.mutex.try_lock()){
-        this_thread::yield();
+        boost::this_thread::yield();
     }
     typename CPS::Return ret(cps(&Buffers::allocator));
     Buffers::allocator.mutex.unlock();
@@ -266,7 +264,7 @@ template <class CPS>
 typename CPS::Return Cache(CPS cps)
 {
     while(!Buffers::cache.m_mutex.try_lock()){
-        this_thread::yield();
+        boost::this_thread::yield();
     }
     typename CPS::Return ret(cps(&Buffers::cache));
     Buffers::cache.m_mutex.unlock();
@@ -277,7 +275,7 @@ template <class MemFun>
 typename MemFun::result_type Cache(MemFun fun,typename MemFun::second_argument_type &arg)
 {
     while(!Buffers::cache.m_mutex.try_lock()){
-        this_thread::yield();
+        boost::this_thread::yield();
     }
     typename MemFun::result_type ret(fun(Buffers::cache,arg));
     Buffers::cache.m_mutex.unlock();

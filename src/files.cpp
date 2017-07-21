@@ -3,10 +3,10 @@ using namespace Pleg;
 #include "tao/json.hpp"
 using namespace tao;
 #include "files.h"
+#include <mutex>
+using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;

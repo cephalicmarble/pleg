@@ -118,7 +118,7 @@ json::value *Writer::getJsonObject(const Buffers::Buffer *buffer)
  */
 void Writer::writeMetaJson(const string &_source)
 {
-    Sources::Source *source(Sources::sources.fromString<Sources::Source>(_source));
+    Sources::Source *source(Sources::fromString<Sources::Source>(_source));
     json::value object{{
         { "source", _source.c_str() }
     }};

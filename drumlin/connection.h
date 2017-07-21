@@ -20,7 +20,7 @@ public:
     void run(){io_service.run();}
     void stop(){io_service.stop();}
 private:
-    thread m_thread;
+    boost::thread m_thread;
 };
 
 extern unique_ptr<IOService> io_thread;

@@ -6,9 +6,10 @@ namespace drumlin {
 
 void ApplicationBase::getStatus(json::value *status)const
 {
-    lock_guard<mutex> l(const_cast<mutex&>(m_critical_section));
+    std::lock_guard<std::mutex> l(const_cast<std::mutex&>(m_critical_section));
     json::value array(json::empty_array);
-    for(threads_reg_type::value_type const& thread : *threads){
+    std::lock_guard<std::recursive_mutex> l2(const_cast<std::recursive_mutex&>(threads.mutex));
+    for(threads_reg_type::value_type const& thread : threads){
         json::value obj(json::empty_object);
         Thread *_thread(thread.second->getThread());
         if(!_thread->isStarted() || _thread->isTerminated())

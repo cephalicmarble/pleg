@@ -3,9 +3,9 @@
 
 #include <tao_forward.h>
 using namespace tao;
+#include <mutex>
+using namespace std;
 #include <boost/thread.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 using namespace boost;
 #include "thread.h"
 
@@ -22,16 +22,16 @@ public:
     virtual ~ApplicationBase(){}
     virtual void post(Event *event)=0;
     virtual void stop()=0;
-    thread::id getThreadId(){ return this_thread::get_id(); }
+    boost::thread::id getThreadId(){ return boost::this_thread::get_id(); }
     /**
      * @brief Server::getStatus : return a list.join("\n") of running threads
      * @return const char*
      */
     virtual void getStatus(json::value *status)const;
     typedef Registry<ThreadWorker> threads_reg_type;
-    mutex m_critical_section;
+    std::mutex m_critical_section;
 protected:
-    std::unique_ptr<threads_reg_type> threads;
+    threads_reg_type threads;
 };
 
 extern ApplicationBase *iapp;

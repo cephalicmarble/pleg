@@ -17,16 +17,17 @@ export default {
         refresh : function() {
             var that = this;
             var i = new Image();
-            i.src = this.png+"?c="+(new Date()).getMilliseconds();
             i.onload = function(){
                 $(that.$el).find("#the_image").replaceWith($("<img src='"+i.src+"' id='the_image' width='640' height='480'/>"));
                 $(that.$el).find("#the_image").bind("click",function(){
                     that.refresh();
                 });
                 setTimeout(function(){
+                    debugger;
                     that.refresh();
                 },1400);
             }
+            i.src = this.png+"?c="+(new Date()).getMilliseconds();
         }
     }
 }

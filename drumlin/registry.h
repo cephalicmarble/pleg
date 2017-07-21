@@ -1,13 +1,11 @@
 #ifndef REGISTRY_H
 #define REGISTRY_H
 
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
-using namespace boost;
 #include <map>
 #include <vector>
 #include <string>
 #include <memory>
+#include <mutex>
 using namespace std;
 #include <boost/utility/enable_if.hpp>
 #include <tao_forward.h>
@@ -26,11 +24,12 @@ class WorkObject
     };
 public:
     typedef WorkReportType ReportType;
-    WorkObject(){}
     virtual ~WorkObject(){}
-    virtual void stop()=0;
+    virtual void stop(){}
     virtual void report(json::value *obj,ReportType type)const=0;
 };
+
+#define REGISTRYLOCK std::lock_guard<std::recursive_mutex> l(const_cast<std::recursive_mutex&>(mutex));
 
 template <class Type>
 class Registry
@@ -45,10 +44,10 @@ public:
     typedef typename map_type::const_iterator const_iterator;
     typedef Type mapped_type;
 protected:
-    unique_ptr<map_type> map;
+    map_type map;
 public:
-    recursive_mutex mutex;
-    Registry():map(new map_type()){}
+    std::recursive_mutex mutex;
+    Registry(){}
     ~Registry(){}
 
     typedef vector<string> names_type;
@@ -56,12 +55,12 @@ public:
      * @brief begin
      * @return map_type::iterator
      */
-    const_iterator begin()const{ return map->begin(); }
+    const_iterator begin()const{ return map.begin(); }
     /**
      * @brief end
      * @return map_type::iterator
      */
-    const_iterator end()const{ return map->end(); }
+    const_iterator end()const{ return map.end(); }
     /**
      * @brief add : TBC from Server only, inserts a new string Source* mapping
      * @param str string
@@ -69,8 +68,8 @@ public:
      */
     void add(const string &str,Type *src)
     {
-        lock_guard<recursive_mutex> l(mutex);
-        map->insert({str,src});
+        REGISTRYLOCK
+        map.insert({str,src});
     }
 
     /**
@@ -79,12 +78,12 @@ public:
      */
     void remove(const string &str,bool noDelete = false)
     {
-        lock_guard<recursive_mutex> l(mutex);
-        typename map_type::iterator it(map->find(str));
-        if(it!=map->end()){
+        REGISTRYLOCK
+        typename map_type::iterator it(map.find(str));
+        if(it!=map.end()){
             if(!noDelete)
                 delete (*it).second;
-            map->erase(it);
+            map.erase(it);
         }
     }
 
@@ -94,14 +93,14 @@ public:
      */
     void removeAll(bool noDelete = false)
     {
-        lock_guard<recursive_mutex> l(mutex);
-        for(auto pair : *map){
+        REGISTRYLOCK
+        for(auto pair : map){
             WorkObject *wo(dynamic_cast<WorkObject*>(pair.second));
             if(!!wo) wo->stop();
             if(!noDelete)
                 delete wo;
         }
-        map->clear();
+        map.clear();
     }
 
     /**
@@ -110,9 +109,9 @@ public:
      */
     names_type list()
     {
-        lock_guard<recursive_mutex> l(mutex);
+        REGISTRYLOCK
         names_type list;
-        for(auto pair : *map){
+        for(auto pair : map){
             list.push_back(pair.first);
         }
         return list;
@@ -124,13 +123,13 @@ public:
      * @return Source*
      */
     template <class T = Type>
-    T *fromString(const string &name)
+    T *fromString(const string &name)const
     {
-        lock_guard<recursive_mutex> l(mutex);
-        typename map_type::iterator it(find_if(map->begin(),map->end(),[name](typename map_type::value_type & pair){
+        REGISTRYLOCK
+        typename map_type::iterator it(find_if(const_cast<map_type&>(map).begin(),const_cast<map_type&>(map).end(),[name](typename map_type::value_type const& pair){
             return name == pair.first;
         }));
-        if(it==map->end()){
+        if(it==const_cast<map_type&>(map).end()){
             return nullptr;
         }else{
             return dynamic_cast<T*>((*it).second);
@@ -142,7 +141,7 @@ public:
      * @return Source*
      */
     template <class T = Type>
-    T * fromString(const char *str)
+    T * fromString(const char *str)const
     {
         return dynamic_cast<T*>(fromString<T>(string(str)));
     }

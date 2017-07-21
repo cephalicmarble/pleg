@@ -4,9 +4,10 @@
 #include <iostream>
 #include <string>
 #include <queue>
+#include <mutex>
+#include <chrono>
 using namespace std;
 #include <boost/thread.hpp>
-#include <boost/thread/mutex.hpp>
 #include <boost/thread/sync_queue.hpp>
 using namespace boost;
 #include "drumlin.h"
@@ -46,7 +47,7 @@ public:
 
 class ThreadWorker;
 
-#define CRITICAL lock_guard<recursive_mutex> l(const_cast<recursive_mutex&>(m_critical_section));
+#define CRITICAL std::lock_guard<std::recursive_mutex> l(const_cast<std::recursive_mutex&>(m_critical_section));
 
 /**
  * @brief The Thread class
@@ -57,7 +58,7 @@ public:
     typedef queue<Event*> queue_type;
     bool isTerminated(){ return m_terminated; }
     void terminate();
-    recursive_mutex m_critical_section;
+    std::recursive_mutex m_critical_section;
     Thread(string _task);
     boost::thread const& getBoostThread()const{ CRITICAL return m_thread; }
     /**
@@ -100,10 +101,12 @@ public:
     friend logger &operator<<(logger &stream,const Thread &rel);
     friend class ThreadWorker;
     void wait(gint64 millis = -1){
+        if(!m_thread.joinable())
+            return;
         if(millis<0)
             m_thread.join();
         else
-            m_thread.try_join_for(chrono::milliseconds(millis));
+            m_thread.try_join_for(boost::chrono::milliseconds(millis));
     }
 private:
     queue_type m_queue;
@@ -138,7 +141,7 @@ public:
     virtual void writeToObject(json::value *obj)const;
     virtual void getStatus(json::value *)const{}
 public:
-    static recursive_mutex critical_section;
+    std::recursive_mutex m_critical_section;
     /**
      * @brief getThread
      * @return  Thread*

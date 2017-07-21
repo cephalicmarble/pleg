@@ -4,9 +4,9 @@
 #include <object.h>
 #include "tao_forward.h"
 using namespace tao;
-#include <boost/thread/mutex.hpp>
+#include <mutex>
+using namespace std;
 #include <boost/thread/sync_queue.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/thread.hpp>
 using namespace boost;
 #include "applicationbase.h"
@@ -23,7 +23,7 @@ class Terminator;
 
 extern ApplicationBase *iapp;
 
-#define THREADSLOCK lock_guard<mutex> l(const_cast<mutex&>(m_critical_section));
+#define THREADSLOCK std::lock_guard<std::mutex> l(const_cast<std::mutex&>(m_critical_section));
 
 class Terminator
 {
@@ -42,7 +42,7 @@ public:
         }
     }
 private:
-    thread m_thread;
+    boost::thread m_thread;
 };
 
 template <class DrumlinApplication = Object>
@@ -58,7 +58,6 @@ public:
     Application(int &argc,char **argv):DrumlinApplication(argc,argv){}
     ~Application()
     {
-        threads.reset(new threads_reg_type());
     }
 
     /**
@@ -70,7 +69,7 @@ public:
     {
         THREADSLOCK
         Debug() << __func__ << thread->getTask() << *thread;
-        threads->add(thread->getTask(),thread->getWorker());
+        threads.add(thread->getTask(),thread->getWorker());
     }
     /**
      * @brief Application<T>::findThread : find threads of name or "all" of type
@@ -82,7 +81,7 @@ public:
     {
         THREADSLOCK
         threads_type _threads;
-        for(auto thread : *threads){
+        for(auto thread : threads){
             if(thread.first == name || (name == "all" && thread.second->getType() == type))
                 _threads.push_back(thread.second->getThread());
         }
@@ -97,7 +96,7 @@ public:
     {
         THREADSLOCK
         threads_type found;
-        for(auto thread : *threads){
+        for(auto thread : threads){
             if(thread.second->getType() == type)
                 found.push_back(thread.second->getThread());
         }
@@ -112,12 +111,12 @@ public:
     {
         THREADSLOCK
         Debug() << __func__ << thread->getTask();
-        threads->remove(thread->getTask(),true);
+        threads.remove(thread->getTask(),true);
         if(!noDelete){
             thread->wait();
             delete thread;
         }
-        if(0==std::distance(threads->begin(),threads->end())){
+        if(0==std::distance(threads.begin(),threads.end())){
             make_event(DrumlinEventApplicationThreadsGone,"threadsGone",(Object*)0)->punt();
         }
     }
@@ -136,10 +135,10 @@ public:
     {
         Event *pevent;
         try{
-            while(!terminated && !this_thread::interruption_requested()){
-                this_thread::interruption_point();
+            while(!terminated && !boost::this_thread::interruption_requested()){
+                boost::this_thread::interruption_point();
                 {
-                    this_thread::disable_interruption di;
+                    boost::this_thread::disable_interruption di;
                     m_queue.wait_pull(pevent);
                     if(event(pevent)){
                         delete pevent;
@@ -229,7 +228,7 @@ public:
             threads_type threads(getThreads((ThreadWorker::Type)type));
             for(threads_type::value_type &thread : threads){
                 thread->terminate();
-                thread->wait(1000);
+                thread->wait(-1);
             }
         }
     }

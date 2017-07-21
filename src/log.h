@@ -3,9 +3,8 @@
 
 #include <pleg.h>
 #include <sstream>
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
-using namespace boost;
+#include <mutex>
+using namespace std;
 
 namespace Pleg {
 
@@ -13,7 +12,7 @@ class Log
 {
     std::stringstream ss;
     bool empty = true;
-    lock_guard<recursive_mutex> lock;
+    std::lock_guard<std::recursive_mutex> lock;
 public:
     Log();
     ~Log();

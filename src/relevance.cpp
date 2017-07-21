@@ -3,7 +3,6 @@ using namespace Pleg;
 #include <tao/json.hpp>
 using namespace tao;
 #include "relevance.h"
-#include "source.h"
 #include <algorithm>
 #include <string>
 #include <iostream>
@@ -11,6 +10,9 @@ using namespace tao;
 using namespace std;
 #include <boost/lexical_cast.hpp>
 using namespace boost;
+#include "thread.h"
+#include "source.h"
+#include "gstreamer.h"
 
 namespace Pleg {
 
@@ -138,13 +140,14 @@ bool Relevance::operator<(const Relevance &rhs)const
 
 void Relevance::operator=(const char *rhs)
 {
-    source = Sources::sources.fromString<Sources::Source>(rhs);
+    source = Sources::fromString<Sources::Source>(rhs);
     if(!!source){
         source_name = rhs;
         uuid = source->getUuid();
-    }else{
-        uuid = string_gen("0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
+        return;
     }
+    source_name = "none";
+    uuid = string_gen("0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
 }
 
 /**

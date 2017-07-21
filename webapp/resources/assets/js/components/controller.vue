@@ -199,7 +199,8 @@ export default {
             var that = this;
             elem.find("button").each(function(i,button){
                 $(button).click(function(evt){
-                    that[evt.target.name].call(that,$list.selection);
+                    (that[evt.target.name] instanceof Function) &&
+                        that[evt.target.name].call(that,$list.selection);
                 });
             });
         },

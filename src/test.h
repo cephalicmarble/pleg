@@ -7,9 +7,8 @@ using namespace tao;
 #include <map>
 #include <memory>
 #include <regex>
+#include <mutex>
 using namespace std;
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 using namespace boost;
@@ -79,7 +78,7 @@ public:
         ,m_type(_type),host(_host),port(_port),m_socket(drumlin::io_service,(Object*)0,this,Client::getAsioSocket())
     {
         tracepoint;
-        lock_guard<recursive_mutex> l(critical_section);
+        std::lock_guard<std::recursive_mutex> l(m_critical_section);
         m_thread = new Thread(metaEnum<TestType>().toString(_type));
         m_thread->setWorker(this);
     }
@@ -167,7 +166,7 @@ public:
             .setTag((void*)getThread())
             .setHandler(this);
 
-        Debug() << &m_socket << " opened" << this_thread::get_id();
+        Debug() << &m_socket << " opened" << boost::this_thread::get_id();
         string_list protocol;
         switch(m_type){
         case test_UDP:
@@ -278,7 +277,7 @@ public:
             ((Thread*)socket->getTag())->quit();
             return;
         }
-        Debug() << this_thread::get_id() << __func__;
+        Debug() << boost::this_thread::get_id() << __func__;
         std::cout << SockHandler::content.string() << endl;
         std::cout << SockHandler::contentLength << endl;
         try{

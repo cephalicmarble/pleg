@@ -1,10 +1,8 @@
 #ifndef FACTORY_H
 #define FACTORY_H
 
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
-using namespace boost;
 #include <list>
+#include <mutex>
 using namespace std;
 #include "event.h"
 #include "transform.h"
@@ -27,7 +25,7 @@ using namespace Pleg;
 #define defFactory(Factory,Class,Parent,Container) \
 namespace Factory { \
     Class *create##Class(Parent *parent){ \
-        lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
+        std::lock_guard<std::recursive_mutex> l(Pleg::factory_mutex); \
         Thread *thread(new Thread(#Class)); \
         Class *obj(new Class(thread,parent)); \
         Container.push_back(obj); \
@@ -48,7 +46,7 @@ namespace Factory { \
 #define defRemove(Factory,Class,Container) \
 namespace Factory { \
     void remove(Class *transform){ \
-        lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
+        std::lock_guard<std::recursive_mutex> l(Pleg::factory_mutex); \
         Container.remove(transform); \
         delete transform; \
     }\
@@ -66,7 +64,7 @@ namespace Pleg {
 
     typedef std::list<Transforms::Transform*> transforms_type;
 
-    extern recursive_mutex factory_mutex;
+    extern std::recursive_mutex factory_mutex;
 
     extern transforms_type transforms;
 }

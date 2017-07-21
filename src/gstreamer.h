@@ -3,9 +3,8 @@
 
 #include "tao_forward.h"
 using namespace tao;
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
-using namespace boost;
+#include <mutex>
+using namespace std;
 #include <math.h>
 #include "thread.h"
 #include "buffer.h"
@@ -24,15 +23,14 @@ using namespace drumlin;
 #include <gst/app/gstappsrc.h>
 #include <gst/riff/riff-media.h>
 #include <gst/pbutils/missing-plugins.h>
+
+#if FULL_GST_VERSION >= VERSION_NUM(0,10,32)
 #include <gst/pbutils/encoding-profile.h>
 //#include <gst/base/gsttypefindhelper.h>
+#endif
 
-#if FULL_GST_VERSION < VERSION_NUM(1,5,0)
-#define COLOR_ELEM "videoconvert"
-#define COLOR_ELEM_NAME COLOR_ELEM
-#else
-#define COLOR_ELEM "autovideoconvert"
-#define COLOR_ELEM_NAME COLOR_ELEM
+#if GST_VERSION_MAJOR == 0
+    #define GstSample GstBuffer
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -73,7 +71,7 @@ class GStreamerStreamSource;
  */
 class gst_initializer
 {
-    static mutex gst_initializer_mutex;
+    static std::mutex gst_initializer_mutex;
 public:
     gst_initializer(int *argc,char **argv[])
     {
@@ -233,17 +231,9 @@ class GStreamer :
 public:
     typedef map<GStreamerSrc*,Sources::GStreamerSourceBase*> connection_type;
     bool isDeleting()const{return deleting;}
-    GStreamer(drumlin::Thread *_thread):
-        ThreadWorker(ThreadType_gstreamer,_thread)
-    {
-        m_type = ThreadType_gstreamer;
-    }
     virtual ~GStreamer() {
         deleting = true;
         connections.clear();
-        for(jobs_type::value_type const& obj : m_jobs){
-            obj.second->stop();
-        }
         m_jobs.removeAll();
     }
     bool event(Event *event);
@@ -253,7 +243,18 @@ public:
     Sources::GStreamerSampleSource *addPipeline(string pipeline,string name,guint32 maxSampleSize);
     Sources::GStreamerOffsetSource *addStream(Relevance::arguments_type const& args,string pipeline,string name);
     void nextSample(GStreamerSrc *that,GstSample *sample);
+    static GStreamer *getInstance(drumlin::Thread *_thread = nullptr){
+        static GStreamer *_instance(nullptr);
+        if(!_instance && _thread)
+            _instance = new GStreamer(_thread);
+        return _instance;
+    }
 private:
+    GStreamer(drumlin::Thread *_thread):
+        ThreadWorker(ThreadType_gstreamer,_thread)
+    {
+        m_type = ThreadType_gstreamer;
+    }
     connection_type connections;
     bool deleting;
 };

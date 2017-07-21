@@ -40,9 +40,11 @@ void PlegApplication::startMock()
 GStreamer::GStreamer *PlegApplication::startGStreamer(const char* task)
 {
     Thread *thread = new Thread(task);
-    GStreamer::GStreamer *gst = new GStreamer::GStreamer(thread);
-    Debug() << "starting GStreamer thread" << task << gst << thread;
-    app->addThread(thread);
+    GStreamer::GStreamer *gst = GStreamer::GStreamer::getInstance(thread);
+    if(!gst->getThread()->isStarted()){
+        Debug() << "starting GStreamer thread" << task << gst << thread;
+        app->addThread(thread);
+    }
     return gst;
 }
 
@@ -53,7 +55,7 @@ bool PlegApplication::event(Event *pevent)
         case ApplicationShutdown:
         {
             if(main_server)main_server->writeLog();
-            break;
+            return false;
         }
 //        case EventType::BluetoothStartThread:
 //        {
@@ -61,7 +63,7 @@ bool PlegApplication::event(Event *pevent)
 //            string task = string("source:")+mac;
 //            Bluetooth *worker = startBluetooth(task.c_str());
 //            while(!worker->getThread()->isStarted())
-//                this_thread::yield();
+//                boost::this_thread::yield();
 //            regex rx("([a-fA-F0-9]{2}:?){6}");
 //            if(regex_match(mac,rx) || mac == "mock" || mac == "all")
 //                make_pod_event(EventType::BluetoothConnectDevices,"connectDevices",mac)->send(worker->getThread());

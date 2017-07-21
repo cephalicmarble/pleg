@@ -13,7 +13,7 @@ namespace Pleg {
     /**
      * @brief mutex : to protect malloc implementation
      */
-    recursive_mutex factory_mutex;
+    std::recursive_mutex factory_mutex;
 
     /**
      * @brief transforms : container for Transform
@@ -40,7 +40,7 @@ namespace Factory {
          */
         Pleg::Response *create(Pleg::Request *that)
         {
-            lock_guard<recursive_mutex> l(Pleg::factory_mutex); \
+            std::lock_guard<std::recursive_mutex> l(Pleg::factory_mutex); \
             Pleg::Response *response(nullptr);
 
             switch(that->getVerb()){

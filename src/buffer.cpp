@@ -259,7 +259,7 @@ int Allocator::getStatus(json::value *status)
  */
 Allocator::~Allocator()
 {
-    lock_guard<recursive_mutex> l(mutex);
+    std::lock_guard<std::recursive_mutex> l(mutex);
 }
 
 /**
@@ -394,7 +394,7 @@ BufferCache::BufferCache()
  */
 BufferCache::~BufferCache()
 {
-    lock_guard<mutex> l(m_mutex);
+    std::lock_guard<std::mutex> l(m_mutex);
 }
 
 /**

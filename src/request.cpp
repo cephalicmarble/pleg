@@ -56,7 +56,7 @@ void Request::work(Object *,Event *)
 
 void Request::connection_start()
 {
-    lock_guard<recursive_mutex> l(critical_section);
+    std::lock_guard<std::recursive_mutex> l(m_critical_section);
     m_thread = new Thread(string("Request:")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time()));
     Debug() << "Starting thread " << this << *m_thread;
     m_thread->setWorker(this);

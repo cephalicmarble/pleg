@@ -3,9 +3,8 @@ using namespace Pleg;
 #include <tao/json.hpp>
 using namespace tao;
 #include <algorithm>
+#include <mutex>
 using namespace std;
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
 #include "thread.h"

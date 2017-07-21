@@ -10,9 +10,8 @@ using namespace tao;
 #ifdef LINUX
 #include <sys/resource.h>
 #endif
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
+#include <mutex>
+using namespace std;
 #include <boost/thread/sync_queue.hpp>
 using namespace boost;
 
@@ -122,10 +121,10 @@ bool Thread::event(Event *pevent)
  */
 void Thread::run()
 {
-    while(!getWorker() || !getWorker()->critical_section.try_lock()){
-        this_thread::sleep_for(chrono::milliseconds(400));
+    while(!getWorker() || !getWorker()->m_critical_section.try_lock()){
+        boost::this_thread::sleep_for(boost::chrono::milliseconds(400));
     }
-    getWorker()->critical_section.unlock();
+    getWorker()->m_critical_section.unlock();
     {
         m_ready = true;
     }
@@ -143,7 +142,7 @@ void Thread::run()
 
 void Thread::post(Event *event)
 {
-    lock_guard<recursive_mutex> l(m_critical_section);
+    std::lock_guard<std::recursive_mutex> l(m_critical_section);
     m_queue.push(event);
 }
 
@@ -151,10 +150,10 @@ void Thread::exec()
 {
     while(!m_deleting && !m_terminated && !m_thread.interruption_requested()){
         try{
-            this_thread::interruption_point();
+            boost::this_thread::interruption_point();
             queue_type::value_type pevent(nullptr);
             {
-                lock_guard<recursive_mutex> l(m_critical_section);
+                std::lock_guard<std::recursive_mutex> l(m_critical_section);
                 if(!m_queue.empty()) {
                     pevent = m_queue.front();
                     m_queue.pop();
@@ -167,7 +166,7 @@ void Thread::exec()
                     Critical() << __func__ << "leaking event" << *pevent;
                 }
             }
-            this_thread::yield();
+            boost::this_thread::yield();
         }catch(thread_interrupted &ti){
         }
     }
@@ -184,15 +183,13 @@ void ThreadWorker::stop()
     signalTermination();
 }
 
-recursive_mutex ThreadWorker::critical_section;
-
 ThreadWorker::ThreadWorker(Type _type,Object *parent = nullptr) : Object(parent),m_type(_type)
 {
 }
 
 ThreadWorker::ThreadWorker(Type _type,string task) : Object(),m_type(_type)
 {
-    lock_guard<recursive_mutex> l(critical_section);
+    std::lock_guard<std::recursive_mutex> l(m_critical_section);
     m_thread = new Thread(task);
     m_thread->setWorker(this);
 }
@@ -205,7 +202,7 @@ ThreadWorker::ThreadWorker(Type _type,string task) : Object(),m_type(_type)
  */
 ThreadWorker::ThreadWorker(Type _type,Thread *_thread) : Object(),m_thread(_thread),m_type(_type)
 {
-    lock_guard<recursive_mutex> l(critical_section);
+    std::lock_guard<std::recursive_mutex> l(m_critical_section);
     m_thread = _thread;
     m_thread->setWorker(this);
 }
@@ -275,7 +272,7 @@ void ThreadWorker::writeToStream(std::ostream &stream)const
  */
 Thread::operator const char*()const
 {
-    lock_guard<recursive_mutex> l(const_cast<recursive_mutex&>(m_critical_section));
+    std::lock_guard<std::recursive_mutex> l(const_cast<std::recursive_mutex&>(m_critical_section));
     static char *buf;
     if(buf)free(buf);
     std::stringstream ss;

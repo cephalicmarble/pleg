@@ -56,7 +56,6 @@ namespace tao
 using namespace tao;
 #include <glib.h>
 #include <gst/gst.h>
-#include <gst/gstsample.h>
 #include <algorithm>
 #include <memory>
 #include <libgen.h>
@@ -99,7 +98,7 @@ int main(int argc, char *argv[])
 {
     int retval = 0;
 
-    Debug() << "Main Thread: " << this_thread::get_id();
+    Debug() << "Main Thread: " << boost::this_thread::get_id();
 
     string server("Server");
     string client("Client");
@@ -158,14 +157,14 @@ int main(int argc, char *argv[])
 //else if(vm.count("all")){
 //            ThreadWorker *worker = app->startBluetooth("sources");
 //            while(!worker->getThread()->isStarted())
-//                this_thread::yield();
+//                boost::this_thread::yield();
 //            make_pod_event(EventType::BluetoothConnectDevices,"connectDevices",sz_all)->send(worker->getThread());
 //        }
 
         if(vm.count("gstreamer")){
             ThreadWorker *worker = app->startGStreamer("gstreamer");
             while(!worker->getThread()->isStarted())
-                this_thread::yield();
+                boost::this_thread::yield();
             make_pod_event(EventType::GstConnectDevices,"connectPipes",sz_all)->send(worker->getThread());
         }
 

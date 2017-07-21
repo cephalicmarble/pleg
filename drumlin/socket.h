@@ -7,9 +7,8 @@ using namespace tao;
 #include <memory>
 #include <string>
 #include <list>
+#include <mutex>
 using namespace std;
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/lock_guard.hpp>
 #include <boost/utility/enable_if.hpp>
 #include <boost/type_traits/is_pointer.hpp>
 #include <boost/asio.hpp>
@@ -114,8 +113,8 @@ private:
     socket_type *m_socket;
 };
 
-#define READLOCK  lock_guard<recursive_mutex> l1(read_buffer_mutex);
-#define WRITELOCK lock_guard<recursive_mutex> l2(write_buffer_mutex);
+#define READLOCK  std::lock_guard<std::recursive_mutex> l1(const_cast<std::recursive_mutex&>(read_buffer_mutex));
+#define WRITELOCK std::lock_guard<std::recursive_mutex> l2(const_cast<std::recursive_mutex&>(write_buffer_mutex));
 
 /**
  * @brief The Socket class
@@ -317,12 +316,15 @@ public:
             adapter_type(this).error(ec);
             return;
         }
-        if(sz < (size_t)writeBuffers.front()->length()){
-            m_bytes_written += sz;
-            return;
+        size_t d(distance(writeBuffers.begin(),writeBuffers.end()));
+        if(d-->0){
+            if(sz < (size_t)writeBuffers.front()->length()){
+                m_bytes_written += sz;
+                return;
+            }
+            writeBuffers.pop_front();
         }
-        writeBuffers.pop_front();
-        if(writeQueueLength()){
+        if(d){
             writing();
         }else if(finished){
             handler->completing(this);
@@ -384,8 +386,8 @@ private:
     std::size_t m_bytes_transferred;
     recv_buf_type m_recv_buf;
     std::size_t m_bytes_written;
-    recursive_mutex write_buffer_mutex;
-    recursive_mutex read_buffer_mutex;
+    std::recursive_mutex write_buffer_mutex;
+    std::recursive_mutex read_buffer_mutex;
     drumlin::buffers_type writeBuffers;
     drumlin::buffers_type readBuffers;
     bool finished = false;

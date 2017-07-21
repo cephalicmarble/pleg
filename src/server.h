@@ -5,9 +5,9 @@
 #include <list>
 #include <iostream>
 #include <numeric>
+#include <mutex>
 using namespace std;
 #include <boost/asio.hpp>
-#include <boost/thread/recursive_mutex.hpp>
 #include <boost/functional.hpp>
 using namespace boost;
 #include "object.h"
@@ -91,7 +91,7 @@ public:
     bool select_route(Request *request,ResponseClass *response,Relevance *relevance)
     {
         typedef std::vector<Route<ResponseClass>> routes_type;
-        lock_guard<recursive_mutex> l(mutex);
+        std::lock_guard<std::recursive_mutex> l(mutex);
         routes_type const& routes(getRoutes<ResponseClass>());
         auto it = std::find_if(routes.begin(),routes.end(),[relevance,request](auto & route){
             *relevance = route.parse_func(request->getUrl());
@@ -119,7 +119,7 @@ private:
     vector<string> &getLog(){ return log; }
     friend class Pleg::Log;
 public:
-    static recursive_mutex mutex;
+    std::recursive_mutex mutex;
     bool closed = false;
 private:
     get_routes_type get_routes;

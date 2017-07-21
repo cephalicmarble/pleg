@@ -595,7 +595,7 @@ void Patch::_meta()
 //    string const& mac(getRequest()->getRelevanceRef().arguments.at("mac"));
 //    Log() << "Connecting all services on device" << mac.toStdString();
 //    make_pod_event(EventType::BluetoothStartThread,"startThread",mac)->punt();
-//    this_thread::sleep_for(1000000000);
+//    boost::this_thread::sleep_for(1000000000);
 //}
 
 //void Patch::_connectSource()
@@ -626,7 +626,7 @@ void Patch::_meta()
 //        }
 //        le_device->connectService(args.at("name"));
 //        qLog() << "Connecting service" << args.at("name").toStdString();
-//        this_thread::sleep_for(5000000000);
+//        boost::this_thread::sleep_for(5000000000);
 //    }while(false);
 //}
 
@@ -760,7 +760,7 @@ void Patch::_restart()
 void Patch::_removeSource()
 {
     string const& source_name(getRequest()->getRelevanceRef().arguments.at("source"));
-    Sources::Source *source(Sources::sources.fromString(source_name));
+    Sources::Source *source(Sources::fromString<Sources::Source>(source_name));
     if(!source){
         statusCode = "404 Source not found";
         Log() << statusCode;
