@@ -1,0 +1,3 @@
+gst-launch-1.0 -v neonhttpsrc location=http://10.0.0.3:49153/content/media/object_id/51263/res_id/0/ext/file.mp3 ! decodebin ! audioconvert ! "audio/x-raw,format=S16LE" ! tee name=t ! queue ! alsasink device=sysdefault t. ! queue ! audioconvert ! rtpL16pay ! udpsink clients=10.0.0.3:5000
+
+gst-launch-1.0 -v udpsrc port=5000 ! "application/x-rtp,media=audio,format=S16LE,layout=interleaved,clock-rate=44100,channels=2,payload=96" ! queue ! rtpL16depay ! audioconvert ! alsasink

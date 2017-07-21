@@ -2,14 +2,18 @@
 [ ] - patch mechanism
 [*] - filemagic and proper gst handling
 [*] - update the systemd
-[ ] - test neon-queue-tee-decodebin-playbin
+[*] - test neon-queue-tee-decodebin-playbin
 						 -udpsink-udpsrc-audio
-[ ] - pipelines into pleg 
+[ ] - pipelines from gmrender (multicast udp)
+[ ] - pipelines into pleg (udp and tcp)
+		udpsrc-depay-audioconvert-appsink (SampleSource)
+		appsrc-tee-playbin (OffsetSource) -^ *enough_data*
 [ ] - player controls into webapp 
 [ ] - webapp tab sheet for multiple plegs
+[ ] - throttling (PATCH as well as comms)
 
 [ ] - ambient link to pleg chart via webapp (gnuradio)
-[ ] - atmospheric link to pleg chart via webapp (gnuradio)
+[ ] - atmospheric link to pleg chart via webapp (gnuradio) 
 [ ] - pleg to pleg mendication (sync,checkpoint)
 [ ] - pleg to disk (gnuradio)
 
