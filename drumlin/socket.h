@@ -171,7 +171,6 @@ public:
     typedef SocketFlushBehaviours FlushBehaviours;
     gint64 bytesToWrite()const{ return numBytes; }
 
-protected:
     /**
      * @brief Socket::setClosing : the socket ought to be closed
      * @param c bool
@@ -180,7 +179,6 @@ protected:
     {
         closing = c;
     }
-public:
     /**
      * @brief Socket::setFinished : the protocol has been completed
      * @param f bool
@@ -192,6 +190,8 @@ public:
 
     void reading()
     {
+        if(closing)
+            return;
         size_t sz;
         if(synchronousRead){
             try{
@@ -293,6 +293,8 @@ public:
 
     void writing()
     {
+        if(closing)
+            return;
         WRITELOCK;
         auto p_buffer = writeBuffers.front().get();
         size_t sz;
@@ -325,6 +327,8 @@ public:
             writeBuffers.pop_front();
         }
         if(d){
+            if(closing)
+                return;
             writing();
         }else if(finished){
             handler->completing(this);

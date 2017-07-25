@@ -842,7 +842,7 @@ bool GStreamer::event(Event *pevent)
         switch(pevent->type()){
         case EventType::GstConnectDevices:
         {
-            Config::JsonConfig gst_config("./gstreamer.json");
+            Config::JsonConfig gst_config(Config::load(Config::gstreamer_config_file));
             json::value pipes(gst_config.at("/pipes"));
             for(auto it : pipes.get_object()){
                 addPipeline(it.second[string("pipeline")].get_string(),it.first,it.second[string("maxSampleSize")].get_unsigned());
@@ -851,7 +851,7 @@ bool GStreamer::event(Event *pevent)
         }
         case EventType::GstConnectPipeline:
         {
-            Config::JsonConfig gst_config("./gstreamer.json");
+            Config::JsonConfig gst_config(Config::load(Config::gstreamer_config_file));
             Request *request;
             pod_event_cast(pevent,&request);
             Relevance const& rel(request->getRelevanceRef());
@@ -863,7 +863,7 @@ bool GStreamer::event(Event *pevent)
         case EventType::GstStreamPort:
         case EventType::GstStreamFile:
         {
-            Config::JsonConfig gst_config("./gstreamer.json");
+            Config::JsonConfig gst_config(Config::load(Config::gstreamer_config_file));
             Request *request;
             pod_event_cast(pevent,&request);
             Relevance const& rel(request->getRelevanceRef());

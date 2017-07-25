@@ -4,7 +4,7 @@ set(TARGET pleg)
 add_compile_options(-g -W -Wall -Wextra -pedantic -Wno-literal-suffix -DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 cmake_minimum_required(VERSION 3.6)
 add_executable(${TARGET} src/main.cpp)
-target_compile_definitions(${TARGET} PRIVATE -DDEBUGHEAP)
+#target_compile_definitions(${TARGET} PRIVATE -DDEBUGHEAP)
 
 set(CMAKE_CXX_STANDARD 14)
 find_package(PkgConfig REQUIRED)

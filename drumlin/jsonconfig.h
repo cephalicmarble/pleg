@@ -20,24 +20,23 @@ using namespace drumlin;
 
 namespace Config {
 
+class JsonConfig;
+
+extern void reload();
+extern JsonConfig load(string path);
+
+typedef map<string,json::value*> json_map_type;
+
 /**
  * @brief The JsonConfig class
  */
 class JsonConfig :
     public Object
 {
-private:
-    json::value *json = nullptr;
-    bool temporaryFlag;
 public:
-    static list<json::value> jsons;
-    JsonConfig();
-    JsonConfig(string const& path,bool temporaryFlag = true);
     JsonConfig(const JsonConfig &rhs);
     virtual ~JsonConfig();
 
-    void clearJson();
-public:
 //    void writeDeviceSource(const QBluetoothDeviceInfo &info,LowEnergySource *_source);
     json::value *getDevice(const string &mac);
 
@@ -49,25 +48,27 @@ public:
     json::value *object();
 
 //    json::value from(BluetoothLEDevice*);
-    void from(string const& _json);
-    void load(string const& path);
-    void load(istream &device);
     void save(Pleg::Request *request);
     void save(ostream &device);
     void save(string const& path);
-
-    void (*beforeSave)(json::value *json) = nullptr;
-    void (*afterLoad)(json::value *json) = nullptr;
-
 public:
     friend logger &operator<<(logger &stream,const JsonConfig &rel);
+    friend void reload();
+    friend JsonConfig load(string path);
+    static json_map_type s_jsons;
+private:
+    JsonConfig();
+    JsonConfig(string const& path);
+    json::value *fromJson(string const& _json);
+    json::value *fromFile(string const& path);
+    json::value *json = nullptr;
+    bool temporaryFlag;
 };
 
 #define JSON_OBJECT_PROP(parent,name) (*parent.find(name)).toObject()
 
 #define JSON_PROPERTY(parent,name) (*parent.find(name))
 
-extern JsonConfig config;
 extern string devices_config_file;
 extern string gstreamer_config_file;
 extern string files_config_file;
@@ -77,6 +78,14 @@ json::value *array(json::value *array = 0);
 size_t length(json::value *value);
 
 extern logger &operator<<(logger &stream,const JsonConfig &rel);
+
+class json_map_clearer
+{
+public:
+    ~json_map_clearer();
+};
+
+extern json_map_clearer klaar;
 
 }
 

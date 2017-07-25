@@ -49,6 +49,7 @@ public:
     string join(const char*pc);
     static string_list fromString(string const& toSplit,string delim,bool all = false,algorithm::token_compress_mode_type = algorithm::token_compress_on);
     static string_list fromString(string const& toSplit,const char* delim,bool all = false,algorithm::token_compress_mode_type = algorithm::token_compress_on);
+    static string_list fromString(string const& toSplit,const char delim,bool all = false,algorithm::token_compress_mode_type = algorithm::token_compress_on);
     string_list &operator=(string_list const& rhs);
     string_list():base(){}
     template<class transform_iter_type>

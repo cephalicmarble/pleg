@@ -193,7 +193,7 @@ Relevance Relevance::fromArguments(const UriParseFunc::arguments_type &c_argumen
 {
     typedef UriParseFunc::arguments_type arguments_type;
     arguments_type &arguments = const_cast<arguments_type&>(c_arguments);
-    Relevance ret("");
+    Relevance ret(true);
     if(arguments.end()!=arguments.find("source")){
         ret = arguments.at("source").c_str();
     }

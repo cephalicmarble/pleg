@@ -71,6 +71,7 @@ void Request::error(boost::system::error_code ec)
 
 void Request::close()
 {
+    getSocketRef().setClosing(true);
     signalTermination();
 }
 

@@ -1,7 +1,7 @@
 .
 drumlin
 src
-vendor/taocpp-json/include
+taocpp-json/include
 /usr/include/gstreamer-0.10
 /usr/include/glib-2.0
 /usr/lib/glib-2.0/include

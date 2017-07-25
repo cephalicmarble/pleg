@@ -23,7 +23,9 @@ UriParseFunc::UriParseFunc(const string _pattern)
 {
     pattern = _pattern;
     string::size_type hunchback;
-    if((hunchback = pattern.find_last_of('?')) > pattern.find_last_of('}') || string::npos==pattern.find_last_of('}')){ //have querystring
+    if((hunchback = pattern.find_last_of('?')) > pattern.find_last_of('}')
+    || (string::npos==pattern.find_last_of('}') && string::npos!=hunchback))
+    { //have querystring
         vector<string> queries;
         string haystack(pattern.substr(hunchback+1));
         algorithm::split(queries,haystack,algorithm::is_any_of(","),algorithm::token_compress_on);
@@ -65,11 +67,11 @@ Relevance UriParseFunc::operator()(const string &url)const
 {
     string::size_type hunchback;
     arguments_type query_params;
+    params_type spec_params;
+    std::copy(query.begin(),query.end(),std::back_inserter(spec_params));
     if((hunchback = url.find_first_of('?'))!=string::npos){
         if(std::distance(query.begin(),query.end())==0)
             return false;
-        params_type spec_params;
-        std::copy(query.begin(),query.end(),std::back_inserter(spec_params));
         vector<string> pairs;
         string mid(url.substr(hunchback+1));
         algorithm::split(pairs,mid,algorithm::is_any_of("&"),algorithm::token_compress_on);
@@ -92,9 +94,15 @@ Relevance UriParseFunc::operator()(const string &url)const
                 query_params.insert({nv[0],nv[1]});
             }
         }
-        for(string const& param : spec_params){
-            if(string::npos == param.find('-'))
+    }
+    if(distance(spec_params.begin(),spec_params.end())){
+        for(string & param : spec_params){
+            string::size_type pos = param.find('-');
+            if(string::npos == pos){
                 return false;
+            }else{
+                query_params.insert({param.replace(pos,1,""),""});
+            }
         }
     }
     string mid(hunchback!=string::npos?url.substr(0,hunchback):url);

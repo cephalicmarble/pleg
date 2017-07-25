@@ -7,10 +7,8 @@ using namespace tao;
 using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
-using namespace boost::filesystem;
 #include "writer.h"
 #include "format.h"
 #include "jsonconfig.h"
@@ -43,15 +41,15 @@ Files::writers_vec_type Files::list()const
 void Files::add(Relevance const& rel,string const& filename)
 {
     FILESLOCK;
-    string path(Pleg::Files::virtualFilePath(filename));
-    if(!path.length()) {
+    virtualPath vpath(filename);
+    if(!vpath.isValid()) {
         Pleg::Log() << "Attempted to access illegal path.";
         return;
     }
-    Pleg::FileWriter *file(getFileWriter(path));
+    Pleg::FileWriter *file(getFileWriter(vpath));
     if(!file){
-        file = new Pleg::FileWriter(path);
-        what.insert({path,file});
+        file = new Pleg::FileWriter(vpath);
+        what.insert({vpath,file});
     }
     file->format.pattern.push_back(rel);//TODO add to record range
     std::pair<const Relevance,Pleg::Buffers::Acceptor*> arg(std::make_pair(rel,file));
@@ -61,12 +59,12 @@ void Files::add(Relevance const& rel,string const& filename)
 void Files::remove(string const& filename)
 {
     FILESLOCK;
-    string path(Pleg::Files::virtualFilePath(filename));
-    if(!path.length()) {
+    virtualPath vpath(filename);
+    if(!vpath.isValid()) {
         Log() << "Attempted to access illegal path.";
         return;
     }
-    Pleg::FileWriter *file(getFileWriter(filename));
+    Pleg::FileWriter *file(getFileWriter(vpath));
     if(!file){
         return;
     }
@@ -82,21 +80,46 @@ Pleg::FileWriter *Files::getFileWriter(string const& filename)
 
 Files files;
 
-string virtualFilePath(string filepath)
+virtualPath::virtualPath(string path):m_path(rootPath().string()+filesystem::path::preferred_separator+path)
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string().c_str()),absolutePath;
-    filesystem::path rootdir(root);
-    filesystem::path file(filepath);
-    if(!filesystem::exists(rootdir) || !filesystem::exists(filepath)){
-        return "";
-    }
-    absolutePath = filesystem::absolute(file,filesystem::initial_path()).string();
-    if(0==absolutePath.find(filesystem::absolute(rootdir,filesystem::initial_path()).string())){
-        return absolutePath;
-    }
-    return "";
+    auto root(rootPath());
+    if(!filesystem::exists(root))
+        filesystem::create_directory(root);
 }
+
+filesystem::path virtualPath::absolutePath()
+{
+    return filesystem::absolute(m_path,filesystem::initial_path());
+}
+
+string virtualPath::relativePath()
+{
+    return isValid()?absolutePath().string().substr(rootPath().string().length()):m_path.string();
+}
+
+bool virtualPath::isValid()
+{
+    return algorithm::starts_with(absolutePath().string(),rootPath().string());
+}
+
+bool virtualPath::exists()
+{
+    return filesystem::exists(m_path);
+}
+
+virtualPath &virtualPath::operator +=(string path)
+{
+    m_path.append(path.c_str());
+    return *this;
+}
+
+filesystem::path virtualPath::rootPath()
+{
+    Config::JsonConfig config(Config::load(Config::files_config_file));
+    return filesystem::absolute(filesystem::path(config.at("/files_root").get_string()),filesystem::initial_path());
+}
+
+//
 
 void getStatus(json::value *status)
 {

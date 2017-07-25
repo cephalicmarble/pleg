@@ -262,9 +262,11 @@ T *fromString(string name)
     if(src)
         return src;
     GStreamer::GStreamer *gst(GStreamer::GStreamer::getInstance());
-    src = gst->getJobs().fromString<T>(name);
-    if(src)
-        return src;
+    if(gst){
+        src = gst->getJobs().fromString<T>(name);
+        if(src)
+            return src;
+    }
     return nullptr;
 }
 

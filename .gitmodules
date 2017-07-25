@@ -1,6 +1,6 @@
-[submodule "vendor/taocpp-json"]
-	path = vendor/taocpp-json
-	url = https://github.com/taocpp/json.git
 [submodule "gmrender-resurrect"]
 	path = gmrender-resurrect
 	url = https://github.com/hzeller/gmrender-resurrect.git
+[submodule "taocpp-json"]
+	path = taocpp-json
+	url = https://github.com/taocpp/json.git

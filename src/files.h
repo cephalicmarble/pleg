@@ -5,8 +5,11 @@
 #include "source.h"
 #include "object.h"
 #include "glib.h"
+#include "jsonconfig.h"
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/filesystem.hpp>
 using namespace boost;
+using namespace boost::filesystem;
 
 namespace Pleg {
 
@@ -35,7 +38,24 @@ public:
 };
 
 extern Files files;
-extern string virtualFilePath(string filepath);
+
+class virtualPath
+{
+public:
+    virtualPath(string path);
+    filesystem::path absolutePath();
+    string relativePath();
+    bool isValid();
+    static filesystem::path rootPath();
+    bool exists();
+    void create();
+    virtualPath &operator +=(std::string path);
+    operator filesystem::path(){ return m_path; }
+    operator string(){ return m_path.string(); }
+private:
+    filesystem::path m_path;
+};
+
 extern void getStatus(json::value *status);
 extern string treeAt(json::value *tree,string root);
 

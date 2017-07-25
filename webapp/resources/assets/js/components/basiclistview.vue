@@ -79,10 +79,10 @@ export default {
             var index = this.getSelectedIndex();
             this.index = {};
             $(this.$el).find("#the_detail").empty();
-            if(_model.children && _model.children.length && _model.name && _model.name.match){
-                this.list_html = this.nest(_model,_model.name,1);
-            }else{
+            if(!_model.children && !_model.name){
                 this.list(_model);
+            }else{
+                this.list_html = this.nest(_model,_model.name,1);
             }
             this.setlist();
             this.setSelectedIndex(index);

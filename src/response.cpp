@@ -2,6 +2,7 @@
 using namespace Pleg;
 #include "tao/json.hpp"
 using namespace tao;
+#include <fstream>
 #include <sstream>
 #include <algorithm>
 #include <png.h>
@@ -188,7 +189,7 @@ void Get::_get()
         free(row);
         fclose(fp);
 
-        ifstream file(filename);
+        std::ifstream file(filename);
         gint64 size;
         char *mem = (char*)malloc(size = filesystem::file_size(filesystem::path(filename)));
         file.read(mem,size);
@@ -210,19 +211,21 @@ void Get::_get()
 
 void Get::_dir()
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance rel(getRequest()->getRelevanceRef());
-    string dirpath(root+(rel.params.end()!=rel.params.find("r")?string(""+filesystem::path::preferred_separator)+rel.params.at("r"):""));
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
+        getRequest()->getSocketRef().write(byte_array("Invalid virtual path"));
+        return;
+    }
     json::value tree(json::empty_object);
     json::object_t &tree_obj(tree.get_object());
     tree_obj.insert({"type","directory"});
-    string_list path(string_list::fromString(dirpath,"/"));
+    string_list path(string_list::fromString(vpath.relativePath(),filesystem::path::preferred_separator));
     tree_obj.insert({"name",path.back()});
     path.pop_back();
     tree_obj.insert({"path",algorithm::join(path,"/")});
     json::value children(json::empty_array);
-    string error(Files::treeAt(&children,dirpath));
+    string error(Files::treeAt(&children,vpath));
     tree_obj.insert({"children",children});
     tree_obj.insert({"root",true});
     if(error.length())
@@ -231,7 +234,7 @@ void Get::_dir()
         getRequest()->getSocketRef().write(json::to_string(tree));
 }
 
-gint64 Get::readRange(ifstream &device,string mime,gint64 completeLength,string range)
+gint64 Get::readRange(std::ifstream &device,std::string mime,gint64 completeLength,std::string range)
 {
     byte_array bytes;
     boost::regex rx("\\d+");
@@ -274,38 +277,29 @@ gint64 Get::readRange(ifstream &device,string mime,gint64 completeLength,string 
 
 void Get::_file()
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string filepath;
-    if(rel.params.end()==rel.params.find("r")){
-        filepath = root+filesystem::path::preferred_separator+rel.arguments.at("name");
-    }else if(Files::virtualFilePath(rel.params.at("r")).length()){
-        filepath = rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
-    }else if(Files::virtualFilePath(filesystem::path::preferred_separator+rel.params.at("r")).length()){
-        filepath = root+filesystem::path::preferred_separator+rel.params.at("r")+filesystem::path::preferred_separator+rel.arguments.at("name");
-    }
-    filesystem::path path(Files::virtualFilePath(filepath));
-    if(!path.string().length()) {
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Attempted to access illegal path.";
         return;
     }
-    gint64 completeLength(filesystem::file_size(path));
+    vpath += rel.arguments.at("name");
+    gint64 completeLength(filesystem::file_size(vpath));
     string mime("application/stuff");
-    if(algorithm::find_tail(path.string(),3)=="mp4"){
+    if(algorithm::ends_with((string)vpath,"mp4")){
         mime = "video/mp4";
     }else{
         mime = "text/text";
     }
     headers << string("Date: ")+posix_time::to_iso_string(posix_time::microsec_clock::universal_time());
-    if(!filesystem::exists(path)){
-        statusCode = "404 File not found : " + path.string();
+    if(!vpath.exists()){
+        statusCode = "404 File not found : " + string(vpath);
         return;
     }
-    ifstream fstream(path.string());
+    std::ifstream fstream(vpath);
     if(!fstream.is_open()){
-        statusCode = "404 Unreadable : " + path.string();
+        statusCode = "404 Unreadable : " + string(vpath);
         return;
     }
     gint64 contentLength = 0;
@@ -341,11 +335,9 @@ void Get::_file()
 
 void Get::_lsof()
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r"):string(""))));
-    if(!rpath.length()){
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Attempted to access illegal path.";
         return;
@@ -355,7 +347,7 @@ void Get::_lsof()
     Files::Files::writers_vec_type writers(Files::files.list());
     for(Files::Files::writers_vec_type::value_type const& fileWriter : writers){
         string s(fileWriter->getFilePath());
-        if(!algorithm::starts_with(s,rpath))
+        if(!algorithm::starts_with(s,(string)vpath))
             continue;
         if(rel.arguments.end() != rel.arguments.find("name")
                 &&
@@ -392,89 +384,85 @@ void Post::service()
 
 void Post::_touch()
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file"));
-    if(!rpath.length()){
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Outside files_root!";
         return;
     }
-    if(filesystem::exists(filesystem::path(rpath))){
+    vpath += rel.arguments.at("file");
+    if(filesystem::exists(vpath)){
         statusCode = "409 Conflict : File already exists";
         Log() << "File already exists.";
         return;
     }
-    ofstream ofstrm;
-    ofstrm.open(rpath,ios_base::out|ios_base::app);
+    std::ofstream ofstrm;
+    ofstrm.open(vpath,ios_base::out|ios_base::app);
     if(!ofstrm.is_open()){
         statusCode = "403 Forbidden";
         Log() << "EPERM";
         return;
     }
     ofstrm.close();
-    Log() << "File" << rpath << "created";
+    Log() << "File" << vpath << "created";
     getRequest()->getSocketRef().write(string("File created"));
 }
 
 void Post::_mkdir()
 {
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")&&rel.params.at("r").length()?rel.params.at("r")+filesystem::path::preferred_separator:string(""))));
-    if(!rpath.length()){
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Outside files_root!";
         return;
     }
-    filesystem::path p(rpath);
-    if(!filesystem::exists(p) || filesystem::status(p).type() ^ filesystem::directory_file)
+    if(!filesystem::exists(vpath) || filesystem::status(vpath).type() ^ filesystem::directory_file)
     {
         statusCode = "404 Not found";
         Log() << "directory not found";
         return;
     }
-    if(!filesystem::create_directory(rpath+filesystem::path::preferred_separator+rel.arguments.at("file"))){
+    string path = vpath;
+    vpath += rel.arguments.at("file");
+    if(!filesystem::create_directory(vpath)){
         statusCode = "403 Forbidden";
         Log() << "mkdir failed";
         return;
     }
-    Log() << "Directory" << rel.arguments.at("file") << "created in" << rpath;
+    Log() << "Directory" << rel.arguments.at("file") << "created in" << path;
     getRequest()->getSocketRef().write(string("Directory Created"));
 }
 
 void Post::makeWriterFile()
 {
     getRequest()->delayed = true;
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file")));
-    if(!rpath.length()){
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Outside files_root!";
         return;
     }
-    Log() << rel.getSourceName() << "writing to" << rpath;
-    rel.getSource()->writeToFile(getRequest(),rpath);
+    vpath += rel.arguments.at("file");
+    Log() << rel.getSourceName() << "writing to" << vpath;
+    rel.getSource()->writeToFile(getRequest(),vpath);
 }
 
 void Post::stopWriterFile()
 {
     getRequest()->delayed = true;
-    Config::JsonConfig config(Config::files_config_file);
-    string root(config["/files_root"].get_string());
     Relevance const& rel(getRequest()->getRelevanceRef());
-    string rpath(Files::virtualFilePath(root+filesystem::path::preferred_separator+(rel.params.end()!=rel.params.find("r")?rel.params.at("r")+filesystem::path::preferred_separator:string(""))+rel.arguments.at("file")));
-    if(!rpath.length()){
+    Files::virtualPath vpath(rel.params.at("r"));
+    if(!vpath.isValid()){
         statusCode = "403 Forbidden";
         Log() << "Outside files_root!";
         return;
     }
-    Log() << "removing file writer:" << rpath;
-    Files::files.remove(rpath);
+    vpath += rel.arguments.at("file");
+    Log() << "removing file writer:" << vpath;
+    Files::files.remove(vpath);
 }
 
 void Post::teeSourcePort()
@@ -559,7 +547,7 @@ void Patch::_routes()
 
 void Patch::_devices()
 {
-    Config::JsonConfig config("devices.json");
+    Config::JsonConfig config(Config::load(Config::devices_config_file));
     std::stringstream ss;
     config.save(ss);
     getRequest()->getSocketRef().write(ss.str());
@@ -703,8 +691,6 @@ void Patch::_openPipe()
         threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getThread());
     }
 
-    Config::JsonConfig config(Config::gstreamer_config_file);
-
     for(threads_type::iterator::value_type const& thread : threads){
         GStreamer::GStreamer *gst(dynamic_cast<GStreamer::GStreamer*>(thread->getWorker()));
         if(!gst)
@@ -720,12 +706,19 @@ void Patch::_config()
 {
     string file;
     if(!getRequest()->getRelevanceRef().arguments.count("file")){
-        file = "devices.json";
+        file = Config::devices_config_file;
     }else{
-        file = getRequest()->getRelevanceRef().arguments.at("file");
+        file = string(".")+filesystem::path::preferred_separator+getRequest()->getRelevanceRef().arguments.at("file");
     }
     Log() << "GET config from" << file;
-    Config::JsonConfig config(string(".")+filesystem::path::preferred_separator+file);
+    if(filesystem::path(file)!=filesystem::path(Config::devices_config_file)
+    && filesystem::path(file)!=filesystem::path(Config::gstreamer_config_file)
+    && filesystem::path(file)!=filesystem::path(Config::files_config_file)){
+        statusCode = "403 Verboten";
+        getRequest()->getSocketRef().write(byte_array("Unrecognised config file requested."));
+        return;
+    }
+    Config::JsonConfig config(Config::load(file));
     std::stringstream ss;
     config.save(ss);
     getRequest()->getSocketRef().write(ss.str());

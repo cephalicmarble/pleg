@@ -49,6 +49,11 @@ string_list string_list::fromString(string const& toSplit,const char* delim,bool
     return string_list::fromString(toSplit,string(delim),all,flags);
 }
 
+string_list string_list::fromString(string const& toSplit,const char delim,bool all,algorithm::token_compress_mode_type flags)
+{
+    return string_list::fromString(toSplit,string(&delim),all,flags);
+}
+
 string_list string_list::fromString(string const& toSplit,string delim,bool all,algorithm::token_compress_mode_type flags)
 {
     string_list list;

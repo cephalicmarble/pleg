@@ -112,7 +112,7 @@ GStreamerSampleSource::GStreamerSampleSource(GStreamer::GStreamer *gst,std::stri
     :GStreamerSourceBase(_name),src(gst,_name),m_maxSampleSize(maxSampleSize)
 {
     type = Source_Gstreamer;
-    Config::JsonConfig gst_config("./gstreamer.json");
+    Config::JsonConfig gst_config(Config::load(Config::gstreamer_config_file));
     string key("/pipes/");
     meta.reset(new json::value(gst_config.at(key+src.getName())));
 }
@@ -288,17 +288,19 @@ void getStatus(json::value *status)
         array_sources.get_array().push_back(obj);
     }
     GStreamer::GStreamer *gst(GStreamer::GStreamer::getInstance());
-    for(ThreadWorker::jobs_type::value_type const& source : gst->getJobs()){
-        Sources::GStreamerSourceBase *gsrc(const_cast<Sources::GStreamerSourceBase*>(dynamic_cast<Sources::GStreamerSourceBase*>(source.second)));
-        json::value obj{ {
-            { "name", source.first },
-            { "index", index++ },
-            { "type", metaEnum<Source::Type>().toString(gsrc->type) },
-        } };
-        gsrc->getStatus(&obj);
-        array_sources.get_array().push_back(obj);
+    if(gst){
+        std::lock_guard<std::recursive_mutex> lgst(const_cast<std::recursive_mutex&>(gst->getJobs().mutex));
+        for(ThreadWorker::jobs_type::value_type const& source : gst->getJobs()){
+            Sources::GStreamerSourceBase *gsrc(const_cast<Sources::GStreamerSourceBase*>(dynamic_cast<Sources::GStreamerSourceBase*>(source.second)));
+            json::value obj{ {
+                { "name", source.first },
+                { "index", index++ },
+                { "type", metaEnum<Source::Type>().toString(gsrc->type) },
+            } };
+            gsrc->getStatus(&obj);
+            array_sources.get_array().push_back(obj);
+        }
     }
-
     status->get_object().insert({"sources",array_sources});
 }
 

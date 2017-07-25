@@ -41,7 +41,7 @@ Server::~Server()
  */
 void Server::defineRoutes()
 {
-    get(Uri::parser("dir?r")                         ,&Get::_dir);
+    get(Uri::parser("dir?r-")                         ,&Get::_dir);
     get(Uri::parser("file/{name?}?r")                ,&Get::_file);
     get(Uri::parser("lsof/{name?}?r-")               ,&Get::_lsof);
 

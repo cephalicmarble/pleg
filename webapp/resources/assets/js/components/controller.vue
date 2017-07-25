@@ -378,6 +378,7 @@ export default {
                         };
                     }
                 }
+                debugger;
                 that.$refs.config.model = tree;
                 return tree;
             });

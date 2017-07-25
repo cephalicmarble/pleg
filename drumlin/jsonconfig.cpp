@@ -17,23 +17,34 @@ using namespace drumlin;
 
 namespace Config {
 
-std::list<json::value> JsonConfig::jsons;
+json_map_clearer klaar;
+
+json_map_type JsonConfig::s_jsons;
+
+void reload()
+{
+    for(json_map_type::value_type &config : JsonConfig::s_jsons){
+        delete config.second;
+        config.second = load(config.first).object();
+    }
+}
+
+JsonConfig load(string path)
+{
+    return JsonConfig(path);
+}
 
 JsonConfig::JsonConfig() : Object(0),temporaryFlag(true)
 {
-    from("{}");
+    json = fromJson("{}");
 }
 
 /**
  * @brief JsonConfig::JsonConfig
  */
-JsonConfig::JsonConfig(std::string const& path,bool _isTemporary) : Object(0),temporaryFlag(_isTemporary)
+JsonConfig::JsonConfig(std::string const& path) : Object(0),temporaryFlag(false)
 {
-    if(!temporaryFlag){
-        load("./devices.json");
-    }else{
-        load(path);
-    }
+    json = fromFile(path);
 }
 
 /**
@@ -51,18 +62,8 @@ JsonConfig::JsonConfig(const JsonConfig &rhs) :
 JsonConfig::~JsonConfig()
 {
     if(temporaryFlag){
-        clearJson();
-    }else{
-        jsons.clear();
+        delete json;
     }
-}
-
-void JsonConfig::clearJson()
-{
-    if(!json)
-        return;
-    jsons.remove(*json);
-    json = nullptr;
 }
 
 /**
@@ -121,36 +122,32 @@ void JsonConfig::setKey(const json::object_initializer && l)
 //    return at(std::string("/devices/")+that->getDeviceInfo().address().toString().toStdString());
 //}
 
-void JsonConfig::from(std::string const& _json)
+json::value *JsonConfig::fromJson(std::string const& _json)
 {
-    clearJson();
-    jsons.push_back(json::from_string(_json));
-    json = &jsons.back();
-    if(afterLoad)afterLoad(json);
+    json = new json::value(json::from_string(_json));
+    return json;
 }
 
 /**
  * @brief JsonConfig::load : load from file
  * @param path tring
  */
-void JsonConfig::load(std::string const& path)
+json::value *JsonConfig::fromFile(std::string const& path)
 {
+    json_map_type::iterator it(s_jsons.find(path));
+    if(s_jsons.end()!=it){
+        json = it->second;
+        return json;
+    }
     filesystem::path p(path);
     if(!filesystem::exists(p))
-        return;
+        return nullptr;
     ifstream strm(path.c_str());
     stringstream ss;
     ss << strm.rdbuf();
-    from(ss.str());
-}
-
-/**
- * @brief JsonConfig::load : load from device
- * @param device istream*
- */
-void JsonConfig::load(istream &device)
-{
-    from(byte_array::readAll(device).string());
+    json = new json::value(json::from_string(ss.str()));
+    s_jsons.insert({path,json});
+    return json;
 }
 
 /**
@@ -159,7 +156,6 @@ void JsonConfig::load(istream &device)
  */
 void JsonConfig::save(ostream &device)
 {
-    if(beforeSave)beforeSave(json);
     json::to_stream(device,*json,2);
 }
 
@@ -169,7 +165,6 @@ void JsonConfig::save(ostream &device)
  */
 void JsonConfig::save(Pleg::Request *request)
 {
-    if(beforeSave)beforeSave(json);
     std::string str(json::to_string(*json));
     request->getSocketRef().write(str);
 }
@@ -180,7 +175,6 @@ void JsonConfig::save(Pleg::Request *request)
  */
 void JsonConfig::save(std::string const& path)
 {
-    if(beforeSave)beforeSave(json);
     filesystem::path p(path);
     if(!filesystem::exists(p))
         return;
@@ -334,6 +328,13 @@ logger &operator<<(logger &stream,const JsonConfig &rel)
 {
     json::to_stream(stream,*rel.json);
     return stream;
+}
+
+json_map_clearer::~json_map_clearer()
+{
+    for(json_map_type::value_type & pair : JsonConfig::s_jsons){
+        delete pair.second;
+    }
 }
 
 } // namespace Config
