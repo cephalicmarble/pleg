@@ -1,21 +1,21 @@
-#include "pleg.h"
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#define TAOJSON
+#include "gstreamer.h"
+
 #include <functional>
 #include <mutex>
 using namespace std;
 #include <boost/algorithm/string.hpp>
 using namespace boost;
-#include "gstreamer.h"
-#include "jsonconfig.h"
+#include "drumlin/jsonconfig.h"
+#include "drumlin/event.h"
+#include "drumlin/cursor.h"
+#include "drumlin/mutexcall.h"
+using namespace drumlin;
 #include "buffer.h"
-#include "event.h"
-#include "cursor.h"
 #include "source.h"
 #include "request.h"
-#include "mutexcall.h"
-using namespace drumlin;
+#include "pleg.h"
+using namespace Pleg;
 
 /* Many thanks for the much-edited cap_gstreamer.cpp example, opencv (cephalicmarble@hotmail.com) */
 

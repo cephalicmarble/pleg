@@ -1,7 +1,7 @@
 #ifndef WRITER_H
 #define WRITER_H
 
-#include "tao_forward.h"
+#include "drumlin/tao_forward.h"
 using namespace tao;
 #include <fstream>
 #include <map>
@@ -9,11 +9,11 @@ using namespace tao;
 using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 using namespace boost;
-#include "object.h"
+#include "drumlin/object.h"
+using namespace drumlin;
 #include "relevance.h"
 #include "buffer.h"
 #include "format.h"
-using namespace drumlin;
 
 //namespace drumlin {
 //    class Socket;
@@ -72,7 +72,7 @@ class FileWriter :
     public Buffers::Acceptor
 {
     explicit FileWriter(string const& filename);
-public:    
+public:
     Pleg::Files::Format format;
     string getFilePath()const{return filePath;}
     void write(const Buffers::Buffer *buffer);

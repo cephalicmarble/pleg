@@ -1,8 +1,6 @@
 #ifndef BUFFERCACHE_H
 #define BUFFERCACHE_H
 
-#include "tao_forward.h"
-using namespace tao;
 #include <boost/date_time/posix_time/posix_time_types.hpp>
 using namespace boost;
 #include <list>
@@ -12,12 +10,14 @@ using namespace boost;
 #include <utility>
 #include <mutex>
 using namespace std;
-#include "relevance.h"
-#include "mutexcall.h"
-#include "exception.h"
+#include "drumlin/tao_forward.h"
+using namespace tao;
+#include "drumlin/mutexcall.h"
+#include "drumlin/exception.h"
 using namespace drumlin;
+#include "relevance.h"
 using namespace Pleg;
-#include "glib.h"
+#include "drumlin/gtypes.h"
 #ifdef _WIN32
 #include <windows.h>
 #define PAGE_SHIFT              12L

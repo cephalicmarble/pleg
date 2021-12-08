@@ -1,6 +1,6 @@
+#define TAOJSON
 #include "request.h"
-#include <pleg.h>
-using namespace Pleg;
+
 #include <algorithm>
 #include <iterator>
 #include <memory>
@@ -11,14 +11,15 @@ using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/tokenizer.hpp>
 using namespace boost;
-#include "thread.h"
-#include "application.h"
-#include "exception.h"
+#include "drumlin/thread.h"
+#include "drumlin/application.h"
+#include "drumlin/exception.h"
+#include "drumlin/socket.h"
+using namespace drumlin;
 #include "response.h"
 #include "factory.h"
-#include "socket.h"
 #include "server.h"
-using namespace drumlin;
+#include "pleg.h"
 
 namespace Pleg {
 
@@ -100,7 +101,7 @@ bool Request::processTransmission(Socket *socket)
         if(verb == verbs_type::NONE) {
             vector<string> parts;
             algorithm::split(parts,line,algorithm::is_any_of(" "),algorithm::token_compress_on);
-            if(distance(parts.begin(),parts.end())<3){
+            if(std::distance(parts.begin(),parts.end())<3){
                 Critical() << "Bad HTTP";
                 return false;
             }
@@ -125,7 +126,7 @@ bool Request::processTransmission(Socket *socket)
                 }else{
                     vector<string> parts;
                     algorithm::split(parts,line,algorithm::is_any_of(":"),algorithm::token_compress_on);
-                    if(distance(parts.begin(),parts.end())>1){
+                    if(std::distance(parts.begin(),parts.end())>1){
                         algorithm::trim(parts[0]);
                         algorithm::trim(parts[1]);
                         headers.insert({parts[0],parts[1]});

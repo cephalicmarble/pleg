@@ -1,12 +1,11 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#define TAOJSON
 #include "buffer.h"
-#include "source.h"
-#include "byte_array.h"
+
+#include "drumlin/byte_array.h"
 #include <unistd.h>
 using namespace boost;
+#include "source.h"
+#include "pleg.h"
 
 namespace Pleg {
 
@@ -52,7 +51,7 @@ guint32 Buffer::length()const
  * @param source Sources::Source*
  */
 SourceBuffer::SourceBuffer(Sources::Source *_source):source(_source)
-{   
+{
     static int c=0;
     if(c++>79){c=0;std::cout.flush();}
 

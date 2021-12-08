@@ -1,8 +1,8 @@
+#define TAOJSON
+#include "relevance.h"
+
 #include <pleg.h>
 using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
-#include "relevance.h"
 #include <algorithm>
 #include <string>
 #include <iostream>

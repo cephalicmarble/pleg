@@ -1,18 +1,16 @@
-#include <pleg.h>
-using namespace Pleg;
-#include "tao/json.hpp"
-using namespace tao;
+#define TAOJSON
 #include "files.h"
+
 #include <mutex>
-using namespace std;
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 using namespace boost;
+#include "drumlin/jsonconfig.h"
 #include "writer.h"
 #include "format.h"
-#include "jsonconfig.h"
 #include "log.h"
+#include "pleg.h"
 
 namespace Pleg {
 
@@ -80,16 +78,17 @@ Pleg::FileWriter *Files::getFileWriter(string const& filename)
 
 Files files;
 
-virtualPath::virtualPath(string path):m_path(rootPath().string()+filesystem::path::preferred_separator+path)
+virtualPath::virtualPath(string path)
+  :m_path(rootPath().string()+boost::filesystem::path::preferred_separator+path)
 {
     auto root(rootPath());
-    if(!filesystem::exists(root))
-        filesystem::create_directory(root);
+    if(!boost::filesystem::exists(root))
+        boost::filesystem::create_directory(root);
 }
 
-filesystem::path virtualPath::absolutePath()
+boost::filesystem::path virtualPath::absolutePath()
 {
-    return filesystem::absolute(m_path,filesystem::initial_path());
+    return boost::filesystem::absolute(m_path,boost::filesystem::initial_path());
 }
 
 string virtualPath::relativePath()
@@ -104,7 +103,7 @@ bool virtualPath::isValid()
 
 bool virtualPath::exists()
 {
-    return filesystem::exists(m_path);
+    return boost::filesystem::exists(m_path);
 }
 
 virtualPath &virtualPath::operator +=(string path)
@@ -113,10 +112,10 @@ virtualPath &virtualPath::operator +=(string path)
     return *this;
 }
 
-filesystem::path virtualPath::rootPath()
+boost::filesystem::path virtualPath::rootPath()
 {
     Config::JsonConfig config(Config::load(Config::files_config_file));
-    return filesystem::absolute(filesystem::path(config.at("/files_root").get_string()),filesystem::initial_path());
+    return boost::filesystem::absolute(boost::filesystem::path(config.at("/files_root").get_string()),boost::filesystem::initial_path());
 }
 
 //
@@ -132,17 +131,17 @@ void getStatus(json::value *status)
 
 string treeAt(json::value *tree,string path)
 {
-    filesystem::path p(path);
-    if(!filesystem::exists(p) || !filesystem::is_directory(p))
+    boost::filesystem::path p(path);
+    if(!boost::filesystem::exists(p) || !boost::filesystem::is_directory(p))
         return "Directory not found: "+path;
-    filesystem::directory_iterator iter(p);
-    for (directory_entry& file : directory_iterator(p)) {
+    boost::filesystem::directory_iterator iter(p);
+    for (boost::filesystem::directory_entry& file : boost::filesystem::directory_iterator(p)) {
         std::ofstream stat(file.path().string().c_str());
         if(!stat.is_open())
             continue;
         json::value node(json::empty_object);
-        string nodepath(filesystem::absolute(file.path(),filesystem::initial_path()).string());
-        if(file.status().type() == directory_file){
+        string nodepath(boost::filesystem::absolute(file.path(),boost::filesystem::initial_path()).string());
+        if(file.status().type() == boost::filesystem::directory_file){
             node.get_object().insert({"type","directory"});
             json::value children(json::empty_array);
             string error = treeAt(&children,nodepath);
@@ -152,9 +151,9 @@ string treeAt(json::value *tree,string path)
                 continue;
             }
             node.get_object().insert({"children",children});
-        }else if(file.status().type() == regular_file){
+        }else if(file.status().type() == boost::filesystem::regular_file){
             node.get_object().insert({"type","file"});
-            node.get_object().insert({"size",filesystem::file_size(file.path())});
+            node.get_object().insert({"size",boost::filesystem::file_size(file.path())});
         }else{
             continue;
         }

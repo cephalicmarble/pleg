@@ -3,8 +3,9 @@
 
 #include <vector>
 using namespace std;
-#include "object.h"
-#include "socket.h"
+#include "drumlin/object.h"
+#include "drumlin/socket.h"
+#include "drumlin/string_list.h"
 using namespace drumlin;
 
 namespace Pleg {

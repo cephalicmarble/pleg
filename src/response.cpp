@@ -1,7 +1,8 @@
+#define TAOJSON
+#include "response.h"
+
 #include <pleg.h>
 using namespace Pleg;
-#include "tao/json.hpp"
-using namespace tao;
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -14,7 +15,6 @@ using namespace std;
 #include <boost/algorithm/string.hpp>
 #include <boost/functional/hash.hpp>
 using namespace boost;
-#include "response.h"
 #include "byte_array.h"
 #include "exception.h"
 #include "request.h"
@@ -119,7 +119,7 @@ void Get::_get()
     Debug() << "get::service - " << *rel;
     data.clear();
     auto buffers(Pleg::Cache(CPS_call(this,Buffers::findRelevant,rel)));
-    if(!distance(data.begin(),data.end())){
+    if(!std::distance(data.begin(),data.end())){
         stringstream ss;
         ss << "No relevant data";
         getRequest()->getSocketRef().write(ss.str());
@@ -142,7 +142,9 @@ void Get::_get()
         int width = gs->getSrc().getWidth(),height = gs->getSrc().getHeight();
 
         char filename[512];
-        strcpy(filename,(filesystem::temp_directory_path().string()+filesystem::path::preferred_separator+"Server-png-XXXXXX").c_str());
+        strcpy(filename,(boost::filesystem::temp_directory_path().string() +
+                        boost::filesystem::path::preferred_separator +
+                        "Server-png-XXXXXX").c_str());
         mkstemp(filename);
 
         FILE *fp = fopen(filename, "wb");
@@ -191,12 +193,12 @@ void Get::_get()
 
         std::ifstream file(filename);
         gint64 size;
-        char *mem = (char*)malloc(size = filesystem::file_size(filesystem::path(filename)));
+        char *mem = (char*)malloc(size = boost::filesystem::file_size(boost::filesystem::path(filename)));
         file.read(mem,size);
         file.close();
         getRequest()->getSocketRef().write(byte_array(mem,size));
         free(mem);
-        filesystem::remove(filesystem::path(filename));
+        boost::filesystem::remove(boost::filesystem::path(filename));
 
     }else{
         headers << "Content-Type: application/raw";
@@ -220,7 +222,7 @@ void Get::_dir()
     json::value tree(json::empty_object);
     json::object_t &tree_obj(tree.get_object());
     tree_obj.insert({"type","directory"});
-    string_list path(string_list::fromString(vpath.relativePath(),filesystem::path::preferred_separator));
+    string_list path(string_list::fromString(vpath.relativePath(),boost::filesystem::path::preferred_separator));
     tree_obj.insert({"name",path.back()});
     path.pop_back();
     tree_obj.insert({"path",algorithm::join(path,"/")});
@@ -285,7 +287,7 @@ void Get::_file()
         return;
     }
     vpath += rel.arguments.at("name");
-    gint64 completeLength(filesystem::file_size(vpath));
+    gint64 completeLength(boost::filesystem::file_size(vpath));
     string mime("application/stuff");
     if(algorithm::ends_with((string)vpath,"mp4")){
         mime = "video/mp4";
@@ -351,7 +353,7 @@ void Get::_lsof()
             continue;
         if(rel.arguments.end() != rel.arguments.find("name")
                 &&
-            filesystem::path(fileWriter->getFilePath()).filename() != rel.arguments.at("name")){
+            boost::filesystem::path(fileWriter->getFilePath()).filename() != rel.arguments.at("name")){
             continue;
         }
         json::value file(json::empty_object);
@@ -392,7 +394,7 @@ void Post::_touch()
         return;
     }
     vpath += rel.arguments.at("file");
-    if(filesystem::exists(vpath)){
+    if(boost::filesystem::exists(vpath)){
         statusCode = "409 Conflict : File already exists";
         Log() << "File already exists.";
         return;
@@ -418,7 +420,7 @@ void Post::_mkdir()
         Log() << "Outside files_root!";
         return;
     }
-    if(!filesystem::exists(vpath) || filesystem::status(vpath).type() ^ filesystem::directory_file)
+    if(!boost::filesystem::exists(vpath) || boost::filesystem::status(vpath).type() ^ boost::filesystem::directory_file)
     {
         statusCode = "404 Not found";
         Log() << "directory not found";
@@ -426,7 +428,7 @@ void Post::_mkdir()
     }
     string path = vpath;
     vpath += rel.arguments.at("file");
-    if(!filesystem::create_directory(vpath)){
+    if(!boost::filesystem::create_directory(vpath)){
         statusCode = "403 Forbidden";
         Log() << "mkdir failed";
         return;
@@ -687,7 +689,7 @@ void Patch::_openPipe()
 {
     getRequest()->delayed = true;
     threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
-    if(0==distance(threads.begin(),threads.end())){
+    if(0==std::distance(threads.begin(),threads.end())){
         threads.push_back(getRequest()->getServer()->startGStreamer("gstreamer")->getThread());
     }
 
@@ -708,12 +710,12 @@ void Patch::_config()
     if(!getRequest()->getRelevanceRef().arguments.count("file")){
         file = Config::devices_config_file;
     }else{
-        file = string(".")+filesystem::path::preferred_separator+getRequest()->getRelevanceRef().arguments.at("file");
+        file = string(".")+boost::filesystem::path::preferred_separator+getRequest()->getRelevanceRef().arguments.at("file");
     }
     Log() << "GET config from" << file;
-    if(filesystem::path(file)!=filesystem::path(Config::devices_config_file)
-    && filesystem::path(file)!=filesystem::path(Config::gstreamer_config_file)
-    && filesystem::path(file)!=filesystem::path(Config::files_config_file)){
+    if(boost::filesystem::path(file)!=boost::filesystem::path(Config::devices_config_file)
+    && boost::filesystem::path(file)!=boost::filesystem::path(Config::gstreamer_config_file)
+    && boost::filesystem::path(file)!=boost::filesystem::path(Config::files_config_file)){
         statusCode = "403 Verboten";
         getRequest()->getSocketRef().write(byte_array("Unrecognised config file requested."));
         return;
@@ -765,7 +767,7 @@ void Patch::_removeSource()
         Log() << "Removed source " << (const char*)*source;
     }else{
         threads_type threads(app->findThread("gstreamer",ThreadType_gstreamer));
-        if(0==distance(threads.begin(),threads.end())){
+        if(0==std::distance(threads.begin(),threads.end())){
             statusCode = "404 GStreamer not active";
             Log() << statusCode;
             return;

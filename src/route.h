@@ -3,9 +3,9 @@
 
 #include <numeric>
 using namespace std;
-#include "socket.h"
-#include "uri.h"
+#include "drumlin/socket.h"
 using namespace drumlin;
+#include "uri.h"
 
 namespace Pleg {
 

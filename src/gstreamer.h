@@ -1,15 +1,10 @@
 #ifndef GSTREAMER_H
 #define GSTREAMER_H
 
-#include "tao_forward.h"
-using namespace tao;
 #include <mutex>
 using namespace std;
 #include <math.h>
-#include "thread.h"
 #include "buffer.h"
-#include "registry.h"
-using namespace drumlin;
 
 #define VERSION_NUM(major, minor, micro) (major * 1000000 + minor * 1000 + micro)
 #define FULL_GST_VERSION VERSION_NUM(GST_VERSION_MAJOR, GST_VERSION_MINOR, GST_VERSION_MICRO)
@@ -28,6 +23,12 @@ using namespace drumlin;
 #include <gst/pbutils/encoding-profile.h>
 //#include <gst/base/gsttypefindhelper.h>
 #endif
+
+#include "drumlin/thread.h"
+#include "drumlin/registry.h"
+using namespace drumlin;
+#include "drumlin/tao_forward.h"
+using namespace tao;
 
 #if GST_VERSION_MAJOR == 0
     #define GstSample GstBuffer

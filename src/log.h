@@ -1,7 +1,7 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include <pleg.h>
+#include "pleg.h"
 #include <sstream>
 #include <mutex>
 using namespace std;

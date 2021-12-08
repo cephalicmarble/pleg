@@ -6,9 +6,9 @@
 using namespace boost;
 #include <iostream>
 using namespace std;
-#include "uri.h"
-#include "event.h"
+#include "drumlin/event.h"
 using namespace drumlin;
+#include "uri.h"
 
 namespace Pleg {
 

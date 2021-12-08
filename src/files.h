@@ -1,15 +1,13 @@
 #ifndef FILES_H
 #define FILES_H
 
-#include "relevance.h"
-#include "source.h"
-#include "object.h"
-#include "glib.h"
-#include "jsonconfig.h"
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
 using namespace boost;
-using namespace boost::filesystem;
+#include "drumlin/object.h"
+#include "drumlin/jsonconfig.h"
+#include "relevance.h"
+#include "source.h"
 
 namespace Pleg {
 
@@ -43,17 +41,17 @@ class virtualPath
 {
 public:
     virtualPath(string path);
-    filesystem::path absolutePath();
+    boost::filesystem::path absolutePath();
     string relativePath();
     bool isValid();
-    static filesystem::path rootPath();
+    static boost::filesystem::path rootPath();
     bool exists();
     void create();
     virtualPath &operator +=(std::string path);
-    operator filesystem::path(){ return m_path; }
+    operator boost::filesystem::path(){ return m_path; }
     operator string(){ return m_path.string(); }
 private:
-    filesystem::path m_path;
+    boost::filesystem::path m_path;
 };
 
 extern void getStatus(json::value *status);

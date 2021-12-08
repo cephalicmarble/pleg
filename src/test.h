@@ -1,7 +1,8 @@
 #ifndef TEST_H
 #define TEST_H
 
-#include <tao_forward.h>
+#define TAOJSON
+#include "drumlin/tao_forward.h"
 using namespace tao;
 #include <list>
 #include <map>
@@ -12,15 +13,17 @@ using namespace std;
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 using namespace boost;
-#include "object.h"
-#include "event.h"
-#include "cursor.h"
-#include "thread.h"
-#include "socket.h"
-#include "signalhandler.h"
-#include "application.h"
-#include "connection.h"
+#include "drumlin/object.h"
+#include "drumlin/event.h"
+#include "drumlin/cursor.h"
+#include "drumlin/thread.h"
+#include "drumlin/socket.h"
+#include "drumlin/signalhandler.h"
+#include "drumlin/application.h"
+#include "drumlin/connection.h"
+#include "drumlin/string_list.h"
 using namespace drumlin;
+#include "plegapp.h"
 //#include "bluetooth.h"
 
 /**

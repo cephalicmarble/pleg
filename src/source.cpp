@@ -1,17 +1,17 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#define TAOJSON
+#include "source.h"
+
+#include <math.h>
 #include <boost/uuid/string_generator.hpp>
 using namespace boost;
-#include "source.h"
+#include "drumlin/jsonconfig.h"
+#include "drumlin/application.h"
 #include "buffer.h"
 #include "gstreamer.h"
 #include "request.h"
 #include "files.h"
-#include "jsonconfig.h"
-#include "application.h"
-#include <math.h>
+#include "pleg.h"
+using namespace Pleg;
 
 namespace Pleg {
 

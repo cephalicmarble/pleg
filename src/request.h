@@ -6,16 +6,16 @@
 #include <map>
 #include <memory>
 using namespace std;
-#include "object.h"
-#include "thread.h"
+#include "drumlin/object.h"
+#include "drumlin/thread.h"
+#include "drumlin/socket.h"
+#include "drumlin/thread.h"
+#include "drumlin/connection.h"
+#include "drumlin/byte_array.h"
+using namespace drumlin;
 #include "uri.h"
 #include "relevance.h"
-#include "socket.h"
-#include "thread.h"
-#include "connection.h"
-#include "byte_array.h"
 #include "route.h"
-using namespace drumlin;
 
 namespace Pleg {
 

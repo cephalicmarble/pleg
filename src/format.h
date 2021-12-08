@@ -1,14 +1,14 @@
 #ifndef FORMAT_H
 #define FORMAT_H
 
-#include "tao_forward.h"
-using namespace tao;
-#include "relevance.h"
-#include "source.h"
-#include "object.h"
-#include "glib.h"
 #include <boost/date_time/posix_time/posix_time.hpp>
 using namespace boost;
+#include "relevance.h"
+#include "drumlin/tao_forward.h"
+using namespace tao;
+#include "drumlin/gtypes.h"
+#include "drumlin/object.h"
+#include "source.h"
 
 namespace Pleg {
 

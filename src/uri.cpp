@@ -1,8 +1,6 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <vector>
 #include "uri.h"
-#include "relevance.h"
+
+#include <vector>
 #include <sstream>
 using namespace std;
 #include <boost/algorithm/string/split.hpp>
@@ -11,6 +9,9 @@ using namespace std;
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 using namespace boost;
+#include "pleg.h"
+#include "relevance.h"
+using namespace Pleg;
 
 namespace Pleg {
 
@@ -95,7 +96,7 @@ Relevance UriParseFunc::operator()(const string &url)const
             }
         }
     }
-    if(distance(spec_params.begin(),spec_params.end())){
+    if(std::distance(spec_params.begin(),spec_params.end())){
         for(string & param : spec_params){
             string::size_type pos = param.find('-');
             if(string::npos == pos){

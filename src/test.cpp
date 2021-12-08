@@ -1,21 +1,19 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#include "test.h"
+
 #include <algorithm>
 #include <mutex>
 using namespace std;
 #include <boost/algorithm/string.hpp>
 using namespace boost;
-#include "thread.h"
-#include "test.h"
-#include "event.h"
-#include "thread.h"
-#include "cursor.h"
-#include "application.h"
-#include "connection.h"
-#include "glib.h"
+#include "drumlin/thread.h"
+#include "drumlin/event.h"
+#include "drumlin/thread.h"
+#include "drumlin/cursor.h"
+#include "drumlin/application.h"
+#include "drumlin/connection.h"
 using namespace drumlin;
+#include "pleg.h"
+using namespace Pleg;
 
 namespace Pleg {
 

@@ -10,12 +10,12 @@ using namespace std;
 #include <boost/asio.hpp>
 #include <boost/functional.hpp>
 using namespace boost;
-#include "object.h"
-#include "socket.h"
-#include "thread.h"
-#include "signalhandler.h"
-#include "application.h"
-#include "connection.h"
+#include "drumlin/object.h"
+#include "drumlin/socket.h"
+#include "drumlin/thread.h"
+#include "drumlin/signalhandler.h"
+#include "drumlin/application.h"
+#include "drumlin/connection.h"
 using namespace drumlin;
 #include "relevance.h"
 #include "uri.h"

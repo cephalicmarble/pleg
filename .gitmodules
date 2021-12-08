@@ -4,3 +4,6 @@
 [submodule "taocpp-json"]
 	path = taocpp-json
 	url = https://github.com/taocpp/json.git
+[submodule "drumlin"]
+	path = drumlin
+	url = git@github.com:cephalicmarble/drumlin.git

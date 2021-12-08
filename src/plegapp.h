@@ -1,8 +1,8 @@
 #ifndef PLEGAPP_H
 #define PLEGAPP_H
 
-#include "object.h"
-#include "metatypes.h"
+#include "drumlin/object.h"
+#include "drumlin/metatypes.h"
 using namespace drumlin;
 
 /**

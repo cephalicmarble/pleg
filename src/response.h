@@ -3,16 +3,16 @@
 
 #include <memory>
 using namespace std;
-#include "object.h"
+#include "drumlin/object.h"
+#include "drumlin/socket.h"
+#include "drumlin/mutexcall.h"
+#include "drumlin/jsonconfig.h"
+#include "drumlin/thread.h"
+using namespace drumlin;
 #include "uri.h"
 #include "relevance.h"
 #include "buffer.h"
-#include "socket.h"
-#include "mutexcall.h"
-#include "jsonconfig.h"
 #include "request.h"
-#include "thread.h"
-using namespace drumlin;
 
 namespace Pleg {
 

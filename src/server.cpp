@@ -1,24 +1,23 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#define TAOJSON
 #include "server.h"
+
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <algorithm>
 #include <mutex>
 using namespace std;
-#include "exception.h"
+#include "drumlin/exception.h"
+#include "drumlin/event.h"
+#include "drumlin/cursor.h"
+#include "drumlin/jsonconfig.h"
+using namespace drumlin;
 #include "request.h"
 #include "response.h"
 #include "source.h"
-#include "event.h"
-//#include "bluetooth.h"
+#include "pleg.h"
 #include "gstreamer.h"
-#include "cursor.h"
-#include "jsonconfig.h"
-using namespace drumlin;
+using namespace Pleg;
 
 namespace Pleg {
 
@@ -144,7 +143,7 @@ void Server::getStatus(json::value *status)const
             }
         }
 
-        if(distance(log.begin(),log.end())){
+        if(std::distance(log.begin(),log.end())){
             json::value _log(json::empty_array);
             json::array_t &logs(_log.get_array());
             for(string const& str : log){

@@ -1,7 +1,6 @@
-#include <pleg.h>
-using namespace Pleg;
-#include <tao/json.hpp>
-using namespace tao;
+#define TAOJSON
+#include "writer.h"
+
 #include <functional>
 #include <fstream>
 using namespace std;
@@ -9,11 +8,12 @@ using namespace std;
 #include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
 using namespace boost;
-#include "writer.h"
+#include "pleg.h"
+using namespace Pleg;
+#include "drumlin/socket.h"
 #include "buffer.h"
 #include "response.h"
 #include "request.h"
-#include "socket.h"
 //#include "lowenergy.h"
 #include "files.h"
 
@@ -32,13 +32,13 @@ void Writer::writeJson(const Buffers::buffer_vec_type buffers)
 {
     std::vector<json::value*> vec;
     {
-        json::value array(json::empty_array),*value;
+        json::value _array(json::empty_array), *value;
         for(auto buffer : buffers){
             value = getJsonObject(buffer);
             vec.push_back(value);
-            array.get_array().push_back(*value);
+            _array.get_array().push_back(*value);
         }
-        write(byte_array(json::to_string(array)));
+        write(byte_array(json::to_string(_array)));
     }
     for(auto value : vec){
         delete value;
@@ -190,10 +190,10 @@ void FileWriter::write(byte_array const& bytes)
 
 void FileWriter::getStatus(json::value *status)
 {
-    filesystem::path p(filePath);
+    boost::filesystem::path p(filePath);
     json::object_t &obj(status->get_object());
     obj.insert({"path",filePath});
-    obj.insert({"size",filesystem::file_size(p)});
+    obj.insert({"size",boost::filesystem::file_size(p)});
     obj.insert({"current",posix_time::to_iso_string(current)});
     json::value _format(json::empty_object);
     format.getStatus(&_format);

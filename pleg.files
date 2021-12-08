@@ -70,3 +70,5 @@ drumlin/drumlin.h
 drumlin/drumlin.cpp
 drumlin/applicationbase.h
 drumlin/applicationbase.cpp
+drumlin/string_list.h
+drumlin/string_list.cpp

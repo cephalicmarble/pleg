@@ -1,12 +1,13 @@
 #include "plegapp.h"
-#include "server.h"
-#include "thread.h"
-using namespace drumlin;
+
 #include <boost/regex.hpp>
 using namespace boost;
+#include "drumlin/thread.h"
+#include "drumlin/event.h"
+#include "drumlin/application.h"
+using namespace drumlin;
 #include "gstreamer.h"
-#include "application.h"
-#include "event.h"
+#include "server.h"
 #include "source.h"
 
 namespace Pleg {

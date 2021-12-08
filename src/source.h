@@ -1,10 +1,6 @@
 #ifndef SOURCE_H
 #define SOURCE_H
 
-#include <pleg.h>
-using namespace Pleg;
-#include "tao_forward.h"
-using namespace tao;
 #include <string>
 #include <map>
 using namespace std;
@@ -12,13 +8,17 @@ using namespace std;
 #include <boost/asio.hpp>
 #include <boost/uuid/uuid.hpp>
 using namespace boost;
-#include "object.h"
-#include "mutexcall.h"
-#include "buffer.h"
-#include "registry.h"
+#include "drumlin/tao_forward.h"
+using namespace tao;
+#include "drumlin/object.h"
+#include "drumlin/mutexcall.h"
+#include "drumlin/registry.h"
 using namespace drumlin;
-
+#include "buffer.h"
 #include "gstreamer.h"
+#include "pleg.h"
+using namespace Pleg;
+
 
 #define SourceTypes (\
     Source_HeartRate,\
@@ -246,7 +246,7 @@ public:
         Allocator(CPS_call_void(Buffers::unregisterSources,0));
         Registry<Source>::removeAll();
     }
-    friend void Sources::getStatus(json::value*);
+    friend void Pleg::Sources::Source::getStatus(json::value*);
 };
 
 /**
