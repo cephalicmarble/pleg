@@ -25,7 +25,8 @@ namespace Pleg {
  * @brief Server::Server : only constructor
  * @param parent Object*
  */
-Server::Server(int argc,char **argv,string address,int port) : ApplicationBase(argc,argv),ServerBase(address,port)
+Server::Server(int argc,char **argv,string address,int port)
+ : PlegApplication(argc,argv),ServerBase(address,port)
 {
 }
 
@@ -106,7 +107,7 @@ void Server::stop()
     ServerBase::stop();
     Debug() << "Removing sources...";
     Sources::sources.removeAll();
-    ApplicationBase::stop();
+    Application::stop();
 }
 
 void Server::writeLog()

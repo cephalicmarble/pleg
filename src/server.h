@@ -37,11 +37,12 @@ namespace GStreamer {
  * @brief The Server class : HTTP socket server
  */
 class Server :
-    public Application<PlegApplication>,
+    public PlegApplication,
     public AsioServer<Server,Request>
 {
 public:
-    typedef Application<PlegApplication> ApplicationBase;
+    typedef drumlin::Application Application;
+    typedef drumlin::ApplicationBase ApplicationBase;
     typedef AsioServer<Server,Request> ServerBase;
     /**
      * @brief routes_type : vector of UriParseFunc instances

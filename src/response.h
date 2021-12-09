@@ -8,6 +8,7 @@ using namespace std;
 #include "drumlin/mutexcall.h"
 #include "drumlin/jsonconfig.h"
 #include "drumlin/thread.h"
+#include "drumlin/status.h"
 using namespace drumlin;
 #include "uri.h"
 #include "relevance.h"
@@ -23,7 +24,7 @@ class ResponseWriter;
  */
 class Response :
     public Object,
-    public StatusReporter
+    public StatusProvider
 {
 public:
     string getStatusCode()const { return statusCode; }

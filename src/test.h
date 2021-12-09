@@ -1,7 +1,6 @@
 #ifndef TEST_H
 #define TEST_H
 
-#define TAOJSON
 #include "drumlin/tao_forward.h"
 using namespace tao;
 #include <list>
@@ -17,6 +16,7 @@ using namespace boost;
 #include "drumlin/event.h"
 #include "drumlin/cursor.h"
 #include "drumlin/thread.h"
+#include "drumlin/thread_worker.h"
 #include "drumlin/socket.h"
 #include "drumlin/signalhandler.h"
 #include "drumlin/application.h"
@@ -56,16 +56,16 @@ protected:
 /**
  * @brief The Test class : Runnable socket test class
  */
-template <class Protocol = asio::ip::tcp>
 class Test :
     public ThreadWorker,
-    public SocketTestHandler<Protocol>,
-    public AsioClient<Protocol>
+    public SocketTestHandler<asio::ip::tcp>,
+    public AsioClient<asio::ip::tcp>
 {
 public:
+    typedef asio::ip::tcp Protocol;
     typedef Protocol protocol_type;
     typedef SocketTestHandler<Protocol> SockHandler;
-    typedef drumlin::Socket<Protocol> Socket;
+    typedef SockHandler::Socket Socket;
     typedef AsioClient<Protocol> Client;
     /**
      * @brief Test::Test
@@ -74,246 +74,78 @@ public:
      * @param _port number
      * @param _type TestType
      */
-    Test(string _host,
-           string _port,
-           TestType _type)
-        : ThreadWorker(ThreadType_test,(Object*)0),SockHandler(),Client(drumlin::io_service,_host,lexical_cast<int>(_port))
-        ,m_type(_type),host(_host),port(_port),m_socket(drumlin::io_service,(Object*)0,this,Client::getAsioSocket())
-    {
-        tracepoint;
-        std::lock_guard<std::recursive_mutex> l(m_critical_section);
-        m_thread = new Thread(metaEnum<TestType>().toString(_type));
-        m_thread->setWorker(this);
-    }
+    Test(string _host, string _port, TestType _type);
     /**
      * @brief Test::~Test
      */
-    ~Test()
-    {
-        tracepoint;
-    }
+    ~Test();
     /**
      * @brief Test::setRelativeUrl : convenience function
      * @param _url tring
      * @return Test*
      */
-    Test<Protocol> &setRelativeUrl(string _url)
-    {
-        tracepoint
-        url = _url;
-        string task;
-        switch(m_type){
-        case test_GET:task = "GET";break;
-        case test_POST:task = "POST";break;
-        case test_PATCH:task = "PATCH";break;
-        case test_UDP:task = "UDP";break;
-        }
-        task += " " + url;
-        getThread()->setTask(task);
-        return *this;
-    }
+    Test &setRelativeUrl(string _url);
     /**
      * @brief Test::setHeaders : convenience function
      * @param _headers tring
      * @return Test*
      */
-    Test<Protocol> &setHeaders(const string_list &_headers)
-    {
-        tracepoint
-        headers = _headers;
-        return *this;
-    }
-
+    Test &setHeaders(const string_list &_headers);
     /**
      * @brief Test::writeToStream : convenience for output
      * @param stream std::ostream
      */
-    void writeToStream(std::ostream &stream)const
-    {
-        tracepoint
-        string_list list;
-        switch(m_type){
-        case test_UDP:
-            list << "UDP";
-            break;
-        case test_GET:
-            list << "GET" << url << "HTTP/1.1";
-            break;
-        case test_POST:
-            list << "POST" << url << "HTTP/1.1";
-            break;
-        case test_PATCH:
-            list << "PATCH" << url << "HTTP/1.1";
-            break;
-        }
-        stream << list.join(" ") << endl;
-    }
-
+    void writeToStream(std::ostream &stream)const;
     /**
      * @brief Test::shutdown : probably
      */
-    void shutdown()
-    {
-        signalTermination();
-    }
-
+    void shutdown();
     /**
      * @brief Test::run defines the test HTTP phrases, UDP preamble
      */
-    void work(Object *,Event *)
-    {
-        if(!url.length())
-            return;
-        tracepoint
-        m_socket
-            .setTag((void*)getThread())
-            .setHandler(this);
-
-        Debug() << &m_socket << " opened" << boost::this_thread::get_id();
-        string_list protocol;
-        switch(m_type){
-        case test_UDP:
-            protocol << "HELO";
-            break;
-        case test_GET:
-            protocol << "GET" << url << "HTTP/1.1";
-            break;
-        case test_POST:
-            protocol << "POST" << url << "HTTP/1.1";
-            break;
-        case test_PATCH:
-            protocol << "GET" << url << "HTTP/1.1";
-            break;
-        }
-        m_socket.write(algorithm::join(protocol," ") + "\r\n" + headers.join("\r\n") + "\r\n\r\n");
-        Debug() << &m_socket << " writing";
-        m_socket.synchronousReads(true);
-        m_socket.synchronousWrites(true);
-        m_socket.writing();
-        Debug() << &m_socket << " spinning";
-        m_socket.reading();
-        signalTermination();
-    }
-
+    void work(Object *,Event *);
     /**
      * @brief Test<>::processTransmission handles HTTP
      * @param socket Socket*
      * @return bool
      */
-    bool processTransmission(Socket *socket)
-    {
-        tracepoint
-        byte_array bytes(socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush));
-        SockHandler::content.append(bytes.data(),bytes.length());
-        return 0 < SockHandler::contentLength && SockHandler::content.length() >= SockHandler::contentLength;
-    }
-
+    bool processTransmission(Socket *socket);
     /**
      * @brief Test<>::receivePacket handles UDP
      * @param socket Socket*
      * @return bool
      */
-    bool receivePacket(Socket *socket)
-    {
-        tracepoint
-        Debug() << socket->peekData(Socket::FlushBehaviours::CoalesceAndFlush).length();
-        return true;
-    }
+    bool receivePacket(Socket *socket);
     /**
      * @brief Test<>::readyProcess is always ready to reply
      * @param socket Socket*
      * @return bool
      */
-    bool readyProcess(Socket *socket)
-    {
-        tracepoint
-        Debug() << __func__;
-        std::regex rx("^HTTP/1.1 [^\r\n]+\r\n([^\r\n]+\r\n)+\r\n(.*)");
-        std::cmatch cap;
-        byte_array bytes(socket->peekData(Socket::FlushBehaviours::Coalesce));
-        cout << bytes.cdata();
-        if(!std::regex_match(bytes.cdata(),cap,rx)){
-            return false;
-        }
-        headers.clear();
-        headers = string_list::fromString(cap[1],"\r\n",true);
-        SockHandler::content = byte_array::fromRawData(bytes.cdata(),cap.length(0)-cap.length(2),string::npos);
-        for(string const& header : headers){
-            string_list nv(string_list::fromString(header,":"));
-            if(nv[0] == "Content-Length"){
-                SockHandler::contentLength = std::atoi(nv[1].c_str());
-            }
-        }
-        if(0 < SockHandler::contentLength && SockHandler::content.length() >= SockHandler::contentLength) {
-            SockHandler::content.truncate(SockHandler::contentLength);
-            socket->peekData(Socket::FlushBehaviours::Flush);
-            return true;
-        }else{
-            return false;
-        }
-    }
+    bool readyProcess(Socket *socket);
     /**
      * @brief Test<>::reply should write a reply to any communication
      * @param socket Socket*
      */
-    bool reply(Socket *socket)
-    {
-        tracepoint
-        socket->write(string("BLARGLE ARGLE"));
-        socket->writing();
-        return 0<=SockHandler::contentLength;
-    }
+    bool reply(Socket *socket);
     /**
      * @brief Test<>::completing writes a debug string
      * @param socket Socket*
      * @param written quint32
      */
-    void completing(Socket *socket)
-    {
-        if(socket->writeQueueLength() || socket->socket().available())
-            return;
-        tracepoint
-        if(!SockHandler::content.length() &&
-           (!readyProcess(socket) || !processTransmission(socket))){
-            Debug() << "early disconnection";
-            Debug() << ((Thread*)socket->getTag()) << "quits";
-            ((Thread*)socket->getTag())->quit();
-            return;
-        }
-        Debug() << boost::this_thread::get_id() << __func__;
-        std::cout << SockHandler::content.string() << endl;
-        std::cout << SockHandler::contentLength << endl;
-        try{
-            json::to_stream(std::cout,json::from_string(string(SockHandler::content.cdata(),0,SockHandler::content.length())));
-        }catch(std::exception &e){
-            Critical() << e.what();
-        }
-        Debug() << ((Thread*)socket->getTag()) << "quits";
-        ((Thread*)socket->getTag())->quit();
-    }
-
+    void completing(Socket *socket);
     /**
      * @brief Test<>::sort reverses the input buffers' ordering
      * @param socket Socket*
      * @param buffers QVector<QByteArray>
      */
-    void sort(Socket *,drumlin::buffers_type &buffers)
-    {
-        tracepoint
-        reverse(buffers.begin(),buffers.end());
-    }
+    void sort(Socket *,drumlin::buffers_type &buffers);
     /**
      * @brief Test<>::disconnected interrupt the test thread
      * @param socket Socket*
      */
-    void disconnected(Socket *)
-    {
-    }
-    void error(Socket *socket,boost::system::error_code &ec)
-    {
-        Critical() << ec.message();
-        ((Thread*)socket->getTag())->quit();
-    }
+    void disconnected(Socket *);
+
+    void error(Socket *socket,boost::system::error_code &ec);
 
 private:
     TestType m_type;
@@ -328,10 +160,10 @@ private:
  * @brief The TestLoop struct
  */
 struct TestLoop :
-    public Application<PlegApplication>
+    public PlegApplication
 {
 public:
-    typedef Application<PlegApplication> Base;
+    typedef PlegApplication Base;
     TestLoop(int &argc,char *argv[]);
 };
 

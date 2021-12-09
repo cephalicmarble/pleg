@@ -1,8 +1,9 @@
 #ifndef PLEGAPP_H
 #define PLEGAPP_H
 
-#include "drumlin/object.h"
+#include "drumlin/application.h"
 #include "drumlin/metatypes.h"
+#include "drumlin/object.h"
 using namespace drumlin;
 
 /**
@@ -59,11 +60,6 @@ using namespace drumlin;
 )
 ENUM(EventType,EventTypes)
 
-namespace drumlin {
-    template <class DrumlinApplication>
-    class Application;
-}
-
 namespace Pleg {
 
 class Bluetooth;
@@ -73,7 +69,7 @@ namespace GStreamer {
 }
 
 class PlegApplication
-    : public Object
+    : public Object, public drumlin::Application
 {
 public:
     PlegApplication(int,char**){}
@@ -85,6 +81,6 @@ public:
 
 } // namespace Pleg
 
-extern drumlin::Application<Pleg::PlegApplication> *app;
+extern Pleg::PlegApplication *app;
 
 #endif // PLEGAPP_H

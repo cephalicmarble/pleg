@@ -35,6 +35,7 @@ class Writer :
 {
 public:
     explicit Writer(Object *parent = 0):Object(parent){}
+    virtual ~Writer(){}
     /**
      * @brief write : pure virtual function to write a buffer.
      * @param buffer Buffers::Buffer*

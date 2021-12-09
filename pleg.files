@@ -53,6 +53,8 @@ drumlin/signalhandler.h
 drumlin/tao_forward.h
 drumlin/thread.cpp
 drumlin/thread.h
+drumlin/thread_worker.cpp
+drumlin/thread_worker.h
 drumlin/mutexcall.h
 drumlin/exception.cpp
 drumlin/exception.h
@@ -72,3 +74,6 @@ drumlin/applicationbase.h
 drumlin/applicationbase.cpp
 drumlin/string_list.h
 drumlin/string_list.cpp
+drumlin/terminator.h
+drumlin/terminator.cpp
+gremlin/compat.h

@@ -62,6 +62,7 @@ using namespace tao;
 using namespace std;
 #include <boost/program_options.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/core/demangle.hpp>
 using namespace boost;
 namespace po = boost::program_options;
 #include "application.h"
@@ -100,18 +101,18 @@ int main(int argc, char *argv[])
 
     Debug() << "Main Thread: " << boost::this_thread::get_id();
 
-    string server("Server");
-    string client("Client");
-    string executable(basename(argv[0]));
+    const char *server = "Server";
+    const char *client = "Client";
+    const char *executable = basename(argv[0]);
 
     Debug() << executable;
 
     do{
 
-    if(executable==server){
+    if(0 == strcmp(executable,server)){
         GStreamer::gst_initializer init(&argc, &argv);
 
-        string trace,host;
+        string trace,host,mangle;
         int port;
 
         po::options_description desc(server);
@@ -124,6 +125,7 @@ int main(int argc, char *argv[])
             ("all,a"                                                                                                     ,"Connect all sources in config at startup.")
             ("gstreamer,G"                                                                                               ,"Connect all gstreamer sources in config at startup.")
             ("mock,m"                                                                                                    ,"Connect mock source at startup.")
+            ("demangle,w"          ,po::value<string>(&mangle)->default_value("")                                        ,"Demangle a typeid")
             ("trace,t"             ,po::value<string>(&trace)->default_value("trace.json")                               ,"Attach trace process.")
             ("address,a"           ,po::value<string>(&host)                                                             ,"Address to listen on")
             ("port,p"              ,po::value<int>(&port)->default_value(4999)                                           ,"Server port")
@@ -132,6 +134,12 @@ int main(int argc, char *argv[])
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         po::notify(vm);
+
+        if (vm.count("demangle")) {
+          cout << mangle.c_str() << std::endl;
+          cout << boost::core::demangle( mangle.c_str() ) << std::endl;
+          return 1;
+        }
 
         if (vm.count("help")) {
             cout << desc << endl;
@@ -148,7 +156,6 @@ int main(int argc, char *argv[])
 
         Pleg::Server a(argc,argv,host,port);
         drumlin::iapp = app = main_server = &a;
-        Pleg::Server &server(a);
 
         string sz_all("all");
         if(vm.count("mock")){
@@ -168,7 +175,7 @@ int main(int argc, char *argv[])
             make_pod_event(EventType::GstConnectDevices,"connectPipes",sz_all)->send(worker->getThread());
         }
 
-        server.start();
+        main_server->start();
 
         try{
             drumlin::start_io();
@@ -186,7 +193,7 @@ int main(int argc, char *argv[])
         std::cout << std::endl;
 
         break;
-    }else if(executable==client){
+    }else if(0 == strcmp(executable,client)){
         TestLoop a(argc, argv);
 
         app = &a;
@@ -244,25 +251,25 @@ int main(int argc, char *argv[])
 
         if(vm.count("get")){
             for(i=0;i<repeats;i++){
-                Test<> *test(new Test<>(host,port,test_GET));
+                Test *test(new Test(host,port,test_GET));
                 app->addThread(test->setRelativeUrl(get).setHeaders(headers).getThread());
             }
         }
         if(vm.count("post")){
             for(i=0;i<repeats;i++){
-                Test<> *test(new Test<>(host,port,test_POST));
+                Test *test(new Test(host,port,test_POST));
                 app->addThread(test->setRelativeUrl(post).setHeaders(headers).getThread());
             }
         }
         if(vm.count("patch")){
             headers << "X-Method: PATCH";
             for(i=0;i<repeats;i++){
-                Test<> *test(new Test<>(host,port,test_PATCH));
+                Test *test(new Test(host,port,test_PATCH));
                 app->addThread(test->setRelativeUrl(patch).setHeaders(headers).getThread());
             }
         }
         if(vm.count("udp")){
-            app->addThread((new Test<asio::ip::udp>(host,port,test_UDP))->getThread());
+            app->addThread((new Test(host,port,test_UDP))->getThread());
         }
 //        if(vm.count("uri")){
 //            bluet = app->startBluetooth("mock",config);

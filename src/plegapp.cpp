@@ -80,8 +80,4 @@ bool PlegApplication::event(Event *pevent)
 
 } // namespace Pleg
 
-namespace drumlin {
-template class Application<Pleg::PlegApplication>;
-}
-
-drumlin::Application<Pleg::PlegApplication> *app;
+Pleg::PlegApplication *app;
